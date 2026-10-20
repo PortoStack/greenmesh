@@ -1,0 +1,100 @@
+services:
+  mqtt-broker:
+    image: eclipse-mosquitto:2
+    container_name: greenhouse-broker
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./docker/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./.docker-volumes/mosquitto/data:/mosquitto/data
+    networks:
+      - greenhouse-net
+
+  node-red:
+    image: nodered/node-red:latest
+    container_name: greenhouse-nodered
+    restart: unless-stopped
+    depends_on:
+      - mqtt-broker
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./docker/nodered/data:/data
+    networks:
+      - greenhouse-net
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+    privileged: true
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: greenhouse-server
+    restart: unless-stopped
+    depends_on:
+      - mqtt-broker
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - MQTT_BROKER_HOST=mqtt-broker
+      - MQTT_BROKER_PORT=1883
+      - MQTT_CLIENT_ID=greenmesh-server
+      - CORS_ORIGINS=*
+      - NODE_TIMEOUT_SEC=15
+      - SIMULATOR_ENABLED=false
+      - SIMULATOR_INTERVAL_SEC=1
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f -s http://127.0.0.1:8080/health || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - greenhouse-net
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: greenhouse-client
+    restart: unless-stopped
+    depends_on:
+      - server
+      - mqtt-broker
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - NEXT_PUBLIC_MQTT_URL=ws://localhost:9001
+    networks:
+      - greenhouse-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: greenhouse-nginx
+    restart: unless-stopped
+    depends_on:
+      - client
+      - server
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - greenhouse-net
+
+networks:
+  greenhouse-net:
+    driver: bridge

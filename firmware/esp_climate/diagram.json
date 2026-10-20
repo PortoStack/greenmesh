@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "author": "GreenMesh",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_temp",
+      "top": -80,
+      "left": -120,
+      "attrs": { "label": "Temperature Sensor (15-50°C)", "value": "285" }
+    },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "btn_fan_req",
+      "top": 120,
+      "left": -100,
+      "attrs": { "color": "yellow", "label": "Req Fan (Manual Pulse)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 80,
+      "left": 130,
+      "attrs": { "resistance": "330" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_fan",
+      "top": 120,
+      "left": 150,
+      "attrs": { "color": "green", "label": "Exhaust Fan State" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:3V3", "pot_temp:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.1", "pot_temp:GND", "black", [ "v0" ] ],
+    [ "esp:34", "pot_temp:SIG", "green", [ "v0" ] ],
+    [ "esp:GND.1", "btn_fan_req:1.l", "black", [ "v0" ] ],
+    [ "esp:25", "btn_fan_req:2.l", "orange", [ "v0" ] ],
+    [ "esp:2", "r1:1", "blue", [ "v0" ] ],
+    [ "r1:2", "led_fan:A", "blue", [ "v0" ] ],
+    [ "esp:GND.2", "led_fan:C", "black", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

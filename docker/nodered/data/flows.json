@@ -1,0 +1,210 @@
+[
+    {
+        "id": "tab_greenhouse_main",
+        "type": "tab",
+        "label": "Greenhouse Central Gateway",
+        "disabled": false,
+        "info": "เกตเวย์กลาง Node-RED: รับส่ง MQTT, ประมวลผลกฎอัตโนมัติ (Section 8) และเชื่อมต่อ Modbus RTU RS485 (Section 5)"
+    },
+    {
+        "id": "mqtt_broker_config",
+        "type": "mqtt-broker",
+        "name": "Mosquitto Broker",
+        "broker": "mqtt-broker",
+        "port": "1883",
+        "clientid": "greenhouse-nodered-gateway",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "greenhouse/gateway/status",
+        "birthQos": "1",
+        "birthRetain": "true",
+        "birthPayload": "{\"status\":\"online\",\"gateway\":\"node-red\"}",
+        "birthMsg": {},
+        "closeTopic": "greenhouse/gateway/status",
+        "closeQos": "1",
+        "closeRetain": "true",
+        "closePayload": "{\"status\":\"offline\",\"gateway\":\"node-red\"}",
+        "closeMsg": {},
+        "willTopic": "greenhouse/gateway/status",
+        "willQos": "1",
+        "willRetain": "true",
+        "willPayload": "{\"status\":\"offline\",\"gateway\":\"node-red\"}",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "mqtt_in_telemetry",
+        "type": "mqtt in",
+        "z": "tab_greenhouse_main",
+        "name": "MQTT Telemetry",
+        "topic": "greenhouse/+/telemetry",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 140,
+        "wires": [
+            [
+                "fn_automation_engine",
+                "debug_telemetry"
+            ]
+        ]
+    },
+    {
+        "id": "debug_telemetry",
+        "type": "debug",
+        "z": "tab_greenhouse_main",
+        "name": "Debug Telemetry",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 420,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "fn_automation_engine",
+        "type": "function",
+        "z": "tab_greenhouse_main",
+        "name": "Automated Rules Engine (Section 8)",
+        "func": "// Global state stored in flow context\nlet state = flow.get('greenhouse_state') || {\n    autoMode: true,\n    moistureAMin: 35.0,\n    moistureAMax: 45.0,\n    moistureBMin: 35.0,\n    moistureBMax: 45.0,\n    tempHigh: 32.0,\n    tempLow: 30.0,\n    lightMin: 30.0,\n    lightMax: 40.0,\n    valves: { bed_a: 0, bed_b: 0 },\n    pump: 0,\n    fan: 0,\n    light: 0,\n    waterLow: false\n};\n\nconst topic = msg.topic;\nconst data = msg.payload;\nconst parts = topic.split('/');\nconst nodeId = parts[1];\n\nlet commandMessages = [];\n\n// Check if water is low from utility node (Digital: 1 = Low Water)\nif (nodeId === 'utility') {\n    state.waterLow = (data.digital === 1);\n    if (state.waterLow) {\n        // EMERGENCY SHUTDOWN (Section 8)\n        state.pump = 0;\n        state.valves.bed_a = 0;\n        state.valves.bed_b = 0;\n        \n        commandMessages.push({\n            topic: 'greenhouse/actuator/pump/command',\n            payload: { command: 'SET_COIL', coil: 0, emergency: true }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/bed_a/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/bed_b/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/alerts',\n            payload: {\n                level: 'DANGER',\n                source: 'utility',\n                message: '🚨 น้ำในถังต่ำ! หยุดปั๊มน้ำและปิดวาล์ว A/B ทั้งหมดทันที'\n            }\n        });\n        \n        flow.set('greenhouse_state', state);\n        return [commandMessages];\n    }\n}\n\n// If not in AutoMode, skip automatic threshold decisions\nif (!state.autoMode) {\n    flow.set('greenhouse_state', state);\n    return [commandMessages];\n}\n\n// Bed A Moisture Rule\nif (nodeId === 'bed_a') {\n    const moisture = data.analog;\n    const potPresent = (data.digital === 1);\n    \n    if (moisture < state.moistureAMin && potPresent && state.valves.bed_a === 0 && !state.waterLow) {\n        state.valves.bed_a = 1;\n        commandMessages.push({\n            topic: 'greenhouse/bed_a/command',\n            payload: { command_id: Date.now(), output: 1 }\n        });\n    } else if ((moisture > state.moistureAMax || !potPresent) && state.valves.bed_a === 1) {\n        state.valves.bed_a = 0;\n        commandMessages.push({\n            topic: 'greenhouse/bed_a/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n    }\n}\n\n// Bed B Moisture Rule\nif (nodeId === 'bed_b') {\n    const moisture = data.analog;\n    const potPresent = (data.digital === 1);\n    \n    if (moisture < state.moistureBMin && potPresent && state.valves.bed_b === 0 && !state.waterLow) {\n        state.valves.bed_b = 1;\n        commandMessages.push({\n            topic: 'greenhouse/bed_b/command',\n            payload: { command_id: Date.now(), output: 1 }\n        });\n    } else if ((moisture > state.moistureBMax || !potPresent) && state.valves.bed_b === 1) {\n        state.valves.bed_b = 0;\n        commandMessages.push({\n            topic: 'greenhouse/bed_b/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n    }\n}\n\n// Pump Coordination Rule: Any valve open & water not low -> Pump ON; No valve open -> Pump OFF\nconst anyValveOpen = (state.valves.bed_a === 1 || state.valves.bed_b === 1);\nif (anyValveOpen && !state.waterLow && state.pump === 0) {\n    state.pump = 1;\n    commandMessages.push({\n        topic: 'greenhouse/actuator/pump/command',\n        payload: { command: 'SET_COIL', coil: 1 }\n    });\n} else if (!anyValveOpen && state.pump === 1) {\n    state.pump = 0;\n    commandMessages.push({\n        topic: 'greenhouse/actuator/pump/command',\n        payload: { command: 'SET_COIL', coil: 0 }\n    });\n}\n\n// Climate Fan Temperature Rule: > 32°C -> ON; < 30°C -> OFF; Digital 1 = Fan Request\nif (nodeId === 'climate') {\n    const temp = data.analog;\n    const fanReq = (data.digital === 1);\n    if (fanReq) {\n        state.fan = 1;\n        commandMessages.push({\n            topic: 'greenhouse/actuator/fan/command',\n            payload: { command: 'SET_COIL', coil: 1 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/climate/command',\n            payload: { command_id: Date.now(), output: 1 }\n        });\n    } else if (temp > state.tempHigh && state.fan === 0) {\n        state.fan = 1;\n        commandMessages.push({\n            topic: 'greenhouse/actuator/fan/command',\n            payload: { command: 'SET_COIL', coil: 1 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/climate/command',\n            payload: { command_id: Date.now(), output: 1 }\n        });\n    } else if (temp < state.tempLow && state.fan === 1 && !fanReq) {\n        state.fan = 0;\n        commandMessages.push({\n            topic: 'greenhouse/actuator/fan/command',\n            payload: { command: 'SET_COIL', coil: 0 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/climate/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n    }\n}\n\n// Utility Light Rule: < 30% -> ON; > 40% -> OFF\nif (nodeId === 'utility') {\n    const light = data.analog;\n    if (light < state.lightMin && state.light === 0) {\n        state.light = 1;\n        commandMessages.push({\n            topic: 'greenhouse/actuator/light/command',\n            payload: { command: 'SET_COIL', coil: 1 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/utility/command',\n            payload: { command_id: Date.now(), output: 1 }\n        });\n    } else if (light > state.lightMax && state.light === 1) {\n        state.light = 0;\n        commandMessages.push({\n            topic: 'greenhouse/actuator/light/command',\n            payload: { command: 'SET_COIL', coil: 0 }\n        });\n        commandMessages.push({\n            topic: 'greenhouse/utility/command',\n            payload: { command_id: Date.now(), output: 0 }\n        });\n    }\n}\n\nflow.set('greenhouse_state', state);\nreturn [commandMessages];",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 480,
+        "y": 140,
+        "wires": [
+            [
+                "mqtt_out_dispatcher"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_out_dispatcher",
+        "type": "mqtt out",
+        "z": "tab_greenhouse_main",
+        "name": "MQTT Command Dispatcher",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_config",
+        "x": 800,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "mqtt_in_config",
+        "type": "mqtt in",
+        "z": "tab_greenhouse_main",
+        "name": "MQTT Config Listener",
+        "topic": "greenhouse/system/config",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 160,
+        "y": 240,
+        "wires": [
+            [
+                "fn_update_config"
+            ]
+        ]
+    },
+    {
+        "id": "fn_update_config",
+        "type": "function",
+        "z": "tab_greenhouse_main",
+        "name": "Update Gateway Config",
+        "func": "let state = flow.get('greenhouse_state') || {};\nconst cfg = msg.payload;\n\nif (cfg.auto_mode !== undefined) state.autoMode = cfg.auto_mode;\nif (cfg.moisture_a_min !== undefined) state.moistureAMin = cfg.moisture_a_min;\nif (cfg.moisture_a_max !== undefined) state.moistureAMax = cfg.moisture_a_max;\nif (cfg.moisture_b_min !== undefined) state.moistureBMin = cfg.moisture_b_min;\nif (cfg.moisture_b_max !== undefined) state.moistureBMax = cfg.moisture_b_max;\nif (cfg.temp_high !== undefined) state.tempHigh = cfg.temp_high;\nif (cfg.temp_low !== undefined) state.tempLow = cfg.temp_low;\nif (cfg.light_min !== undefined) state.lightMin = cfg.light_min;\nif (cfg.light_max !== undefined) state.lightMax = cfg.light_max;\n\nflow.set('greenhouse_state', state);\nnode.log('Node-RED Gateway thresholds updated from server: ' + JSON.stringify(cfg));\nreturn null;",
+        "outputs": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 450,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "mqtt_in_actuator_cmd",
+        "type": "mqtt in",
+        "z": "tab_greenhouse_main",
+        "name": "MQTT Actuator Command",
+        "topic": "greenhouse/actuator/+/command",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt_broker_config",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 180,
+        "y": 340,
+        "wires": [
+            [
+                "fn_modbus_dispatcher"
+            ]
+        ]
+    },
+    {
+        "id": "fn_modbus_dispatcher",
+        "type": "function",
+        "z": "tab_greenhouse_main",
+        "name": "Modbus Master Bridge & State Publisher",
+        "func": "// Section 5: Slave 1 = Pump, Slave 2 = Fan, Slave 3 = Light\nconst topic = msg.topic;\nconst parts = topic.split('/');\nconst actType = parts[2]; // pump, fan, light\nconst cmd = msg.payload;\n\nlet slaveId = 1;\nif (actType === 'fan') slaveId = 2;\nif (actType === 'light') slaveId = 3;\n\nconst coilVal = cmd.coil !== undefined ? cmd.coil : 0;\nconst modeVal = cmd.mode !== undefined ? cmd.mode : 1;\n\n// Publish updated feedback state to greenhouse/actuator/<type>/state\nconst stateMsg = {\n    topic: 'greenhouse/actuator/' + actType + '/state',\n    payload: {\n        slave_id: slaveId,\n        type: actType,\n        coil: coilVal,\n        mode: modeVal,\n        target: (actType === 'fan' ? 30 : (actType === 'light' ? 50 : 0)),\n        running: coilVal,\n        value: coilVal === 1 ? (actType === 'fan' ? 1200 : (actType === 'light' ? 80 : 1)) : 0\n    }\n};\n\nnode.log('Modbus RTU Master: Written Slave ' + slaveId + ' (' + actType + ') Coil 0 = ' + coilVal);\nreturn stateMsg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 510,
+        "y": 340,
+        "wires": [
+            [
+                "mqtt_out_actuator_state"
+            ]
+        ]
+    },
+    {
+        "id": "mqtt_out_actuator_state",
+        "type": "mqtt out",
+        "z": "tab_greenhouse_main",
+        "name": "Publish Actuator State",
+        "topic": "",
+        "qos": "1",
+        "retain": "true",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt_broker_config",
+        "x": 810,
+        "y": 340,
+        "wires": []
+    }
+]

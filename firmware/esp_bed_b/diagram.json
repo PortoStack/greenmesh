@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "author": "GreenMesh",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 0,
+      "left": 0,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot_moisture",
+      "top": -80,
+      "left": -120,
+      "attrs": { "label": "Soil Moisture B (0-100%)" }
+    },
+    {
+      "type": "wokwi-slide-switch",
+      "id": "sw_pot",
+      "top": 120,
+      "left": -120,
+      "attrs": { "label": "Pot B (L:Placed / R:Empty)" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r1",
+      "top": 80,
+      "left": 130,
+      "attrs": { "resistance": "330" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_valve",
+      "top": 120,
+      "left": 150,
+      "attrs": { "color": "blue", "label": "Solenoid Valve B" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "esp:3V3", "pot_moisture:VCC", "red", [ "v0" ] ],
+    [ "esp:GND.1", "pot_moisture:GND", "black", [ "v0" ] ],
+    [ "esp:34", "pot_moisture:SIG", "green", [ "v0" ] ],
+    [ "esp:GND.1", "sw_pot:1", "black", [ "v0" ] ],
+    [ "esp:25", "sw_pot:2", "orange", [ "v0" ] ],
+    [ "esp:3V3", "sw_pot:3", "red", [ "v0" ] ],
+    [ "esp:2", "r1:1", "blue", [ "v0" ] ],
+    [ "r1:2", "led_valve:A", "blue", [ "v0" ] ],
+    [ "esp:GND.2", "led_valve:C", "black", [ "v0" ] ]
+  ],
+  "dependencies": {}
+}

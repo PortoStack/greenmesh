@@ -1,0 +1,7 @@
+[wokwi]
+version = 1
+firmware = ".pio/build/esp32dev/firmware.bin"
+elf = ".pio/build/esp32dev/firmware.elf"
+
+# ใส่ Wokwi Network Access Token จาก Wokwi Club / Profile (ถ้ามี) เพื่อเชื่อมเครือข่ายจำลองวงเดียวกัน
+# networkToken = ""

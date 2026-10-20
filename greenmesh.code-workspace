@@ -1,0 +1,139 @@
+{
+  "folders": [
+    {
+      "name": "Client - GreenMesh",
+      "path": "./client"
+    },
+    {
+      "name": "Server - GreenMesh",
+      "path": "./server"
+    },
+    {
+      "name": "Docker - GreenMesh",
+      "path": "./docker"
+    },
+    {
+      "name": "ESP Master - GreenMesh",
+      "path": "firmware/esp_master_node"
+    },
+    {
+      "name": "ESP Bed A - GreenMesh",
+      "path": "firmware/esp_bed_a"
+    },
+    {
+      "name": "ESP Bed B - GreenMesh",
+      "path": "firmware/esp_bed_b"
+    },
+    {
+      "name": "ESP Climate - GreenMesh",
+      "path": "firmware/esp_climate"
+    },
+    {
+      "name": "Firmware Common - GreenMesh",
+      "path": "firmware/common"
+    },
+    {
+      "name": "Root - GreenMesh",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+    // --- Next.js / Web Formatting (Prettier) ---
+    "[javascript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[json]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[jsonc]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+
+    // --- Golang Formatting & Tools (Server) ---
+    "[go]": {
+      "editor.defaultFormatter": "golang.go",
+      "editor.formatOnSave": true,
+      "editor.codeActionsOnSave": {
+        "source.organizeImports": "always"
+      }
+    },
+    "go.useLanguageServer": true,
+    "gopls": {
+      "ui.semanticTokens": true,
+      "formatting.gofumpt": true
+    },
+
+    // --- C/C++ Formatting & IntelliSense (ESP32 Firmware) ---
+    "[c]": {
+      "editor.defaultFormatter": "ms-vscode.cpptools",
+      "editor.formatOnSave": true
+    },
+    "[cpp]": {
+      "editor.defaultFormatter": "ms-vscode.cpptools",
+      "editor.formatOnSave": true
+    },
+    "C_Cpp.formatting": "Default",
+    "C_Cpp.intelliSenseEngine": "default",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.includePath": [
+      "${workspaceFolder}/**",
+      "${workspaceFolder}/include",
+      "${workspaceFolder}/src",
+      "${workspaceFolder}/../common",
+      "${workspaceFolder}/../../firmware/common",
+      "/Users/porto/Workspace/Study/sensor-network/term_project/greenmesh/firmware/common"
+    ],
+
+    // --- Markdown Formatting ---
+    "[markdown]": {
+      "editor.defaultFormatter": "yzhang.markdown-all-in-one"
+    },
+
+    // --- ESLint Integration for Next.js Subdirectory ---
+    "eslint.workingDirectories": [
+      {
+        "directory": "client",
+        "changeProcessCWD": true
+      }
+    ],
+
+    // --- Search & File Excludes ---
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/.next": true,
+      "**/.pio": true,
+      "**/bin": true
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      // Golang
+      "golang.go",
+
+      // C/C++ & Embedded / ESP32 Simulation
+      "ms-vscode.cpptools",
+      "platformio.platformio-ide",
+      "wokwi.wokwi-vscode",
+
+      // Frontend & Web (Next.js / Tailwind)
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "bradlc.vscode-tailwindcss",
+
+      // Docker, TOML & Documentation
+      "ms-azuretools.vscode-docker",
+      "tamasfe.even-better-toml",
+      "yzhang.markdown-all-in-one"
+    ]
+  }
+}

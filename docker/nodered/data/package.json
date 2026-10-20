@@ -1,0 +1,7 @@
+{
+  "name": "greenhouse-nodered",
+  "description": "GreenMesh Node-RED Gateway & Automation Flows",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {}
+}
