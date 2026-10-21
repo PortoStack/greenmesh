@@ -51,7 +51,6 @@
         "tcpType": "DEFAULT",
         "serialPort": "/dev/ttyUSB0",
         "serialType": "RTU-BUFFERD",
-        "serialBaudRate": "9600",
         "serialDatabits": "8",
         "serialStopbits": "1",
         "serialParity": "none",
@@ -482,8 +481,8 @@
         "type": "function",
         "z": "tab_greenhouse_main",
         "name": "Execute Command",
-        "func": "const cmd = msg.payload;\nlet mqttMsgs = [];\nlet modbusMsgs = [];\nlet snapshot = flow.get('greenhouse_snapshot');\n\nif (cmd.target_type === 'actuator') {\n    const actType = cmd.target_id; // pump, fan, light\n    let slaveId = 1;\n    if (actType === 'fan') slaveId = 2;\n    if (actType === 'light') slaveId = 3;\n    \n    const coil = cmd.output !== undefined ? cmd.output : 1;\n    if (snapshot && snapshot.actuators[actType]) {\n        snapshot.actuators[actType].coil = coil;\n        snapshot.actuators[actType].running = coil;\n    }\n    mqttMsgs.push({\n        topic: 'greenhouse/actuator/' + actType + '/command',\n        payload: { command: 'SET_COIL', coil: coil, mode: cmd.mode || 0 }\n    });\n    modbusMsgs.push({\n        payload: { value: (coil === 1), unitid: slaveId, fc: 5, address: 0 }\n    });\n} else {\n    const nodeId = cmd.target_id;\n    if (nodeId === 'water_low') {\n        const isLow = (cmd.output === 1);\n        if (snapshot) {\n            snapshot.water_low = isLow;\n            snapshot.emergency = isLow;\n        }\n        mqttMsgs.push({\n            topic: 'greenhouse/utility/command',\n            payload: { command_id: Date.now(), target: 'water_low', output: cmd.output }\n        });\n    } else {\n        if (snapshot && snapshot.nodes[nodeId]) {\n            snapshot.nodes[nodeId].output_state = cmd.output;\n            snapshot.nodes[nodeId].manual_override_until = Date.now() + 30000;\n        }\n        mqttMsgs.push({\n            topic: 'greenhouse/' + nodeId + '/command',\n            payload: { command_id: Date.now(), output: cmd.output }\n        });\n    }\n}\nif (snapshot) flow.set('greenhouse_snapshot', snapshot);\n\n// Respond to HTTP request\nconst respMsg = {\n    req: msg.req,\n    res: msg.res,\n    payload: {\n        success: true,\n        message: 'Command dispatched successfully',\n        command_id: Date.now(),\n        timestamp: new Date().toISOString()\n    }\n};\n\nreturn [respMsg, mqttMsgs, modbusMsgs];",
-        "outputs": 3,
+        "func": "const cmd = msg.payload;\nlet mqttMsgs = [];\nlet modbusMsgs = [];\nlet snapshot = flow.get('greenhouse_snapshot');\n\nif (cmd.target_type === 'actuator') {\n    const actType = cmd.target_id; // pump, fan, light\n    let slaveId = 1;\n    if (actType === 'fan') slaveId = 2;\n    if (actType === 'light') slaveId = 3;\n    \n    const coil = cmd.output !== undefined ? cmd.output : 1;\n    if (snapshot && snapshot.actuators[actType]) {\n        snapshot.actuators[actType].coil = coil;\n        snapshot.actuators[actType].running = coil;\n    }\n    mqttMsgs.push({\n        topic: 'greenhouse/actuator/' + actType + '/command',\n        payload: { command: 'SET_COIL', coil: coil, mode: cmd.mode || 0 }\n    });\n    modbusMsgs.push({\n        payload: { value: (coil === 1), unitid: slaveId, fc: 5, address: 0 }\n    });\n} else {\n    const nodeId = cmd.target_id;\n    if (nodeId === 'water_low') {\n        const isLow = (cmd.output === 1);\n        if (snapshot) {\n            snapshot.water_low = isLow;\n            snapshot.emergency = isLow;\n            if (snapshot.nodes.utility) snapshot.nodes.utility.digital_value = isLow ? 1 : 0;\n        }\n        mqttMsgs.push({\n            topic: 'greenhouse/utility/command',\n            payload: { command_id: Date.now(), target: 'water_low', output: cmd.output }\n        });\n    } else {\n        if (snapshot && snapshot.nodes[nodeId]) {\n            snapshot.nodes[nodeId].output_state = cmd.output;\n            snapshot.nodes[nodeId].manual_override_until = Date.now() + 30000;\n        }\n        mqttMsgs.push({\n            topic: 'greenhouse/' + nodeId + '/command',\n            payload: { command_id: Date.now(), output: cmd.output }\n        });\n    }\n}\nif (snapshot) flow.set('greenhouse_snapshot', snapshot);\n\n// Respond to HTTP request\nconst respMsg = {\n    req: msg.req,\n    res: msg.res,\n    payload: {\n        success: true,\n        message: 'Command dispatched successfully',\n        command_id: Date.now(),\n        timestamp: new Date().toISOString()\n    }\n};\n\nconst wsMsg = snapshot ? { payload: JSON.stringify({ type: 'snapshot', data: snapshot }) } : null;\nreturn [respMsg, mqttMsgs, modbusMsgs, wsMsg];",
+        "outputs": 4,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
@@ -499,6 +498,9 @@
             ],
             [
                 "modbus_flex_write_coil"
+            ],
+            [
+                "ws_out_stream"
             ]
         ]
     },
@@ -564,9 +566,12 @@
         "name": "Modbus Write Coil (FC05)",
         "showStatusActivities": true,
         "showErrors": false,
+        "showWarnings": true,
         "server": "modbus_master_client",
         "emptyMsgOnFail": false,
         "keepMsgProperties": false,
+        "delayOnStart": false,
+        "startDelayTime": "",
         "x": 840,
         "y": 700,
         "wires": [
@@ -625,6 +630,7 @@
         "name": "Read Input Registers (FC04)",
         "showStatusActivities": false,
         "showErrors": false,
+        "showWarnings": true,
         "logIOActivities": false,
         "server": "modbus_master_client",
         "useIOFile": false,
@@ -632,6 +638,9 @@
         "useIOForPayload": false,
         "emptyMsgOnFail": false,
         "keepMsgProperties": true,
+        "delayOnStart": false,
+        "enableDeformedMessages": false,
+        "startDelayTime": "",
         "x": 750,
         "y": 840,
         "wires": [

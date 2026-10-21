@@ -4,6 +4,25 @@
 
 ---
 
+## ตรวจ MQTT Gateway หลุดหรือ timeout
+
+หลังแก้ firmware ต้องอัปโหลด `esp32_master_node/esp32_master_node.ino` ลงบอร์ด
+Master ใหม่ การ rebuild Docker ไม่ได้อัปเดตโปรแกรมบน ESP32
+
+- ตรวจ `MQTT_HOST` ใน `esp32_master_node/config.h` ให้เป็น IP ของเครื่องที่รัน broker
+  ซึ่ง ESP32 เข้าถึงได้ แล้วเปิด Serial Monitor ที่ 115200 baud
+- Firmware ใช้ Client ID คงที่จาก chip ID, Keep Alive 60 วินาที และ retry ทุก 5 วินาที
+  พร้อมจำกัดเวลารอ TCP และ MQTT response (การค้นหา DNS อาจใช้เวลาเพิ่ม)
+- เมื่อเริ่มโปรแกรมจะพิมพ์ `[Boot] reset_reason=...` และเมื่อเครือข่ายเปลี่ยนสถานะ
+  จะพิมพ์ Wi-Fi status, RSSI, IP และ MQTT state เพื่อแยกการรีบูตออกจากการหลุด
+- รัน Gateway เพียง instance เดียวต่อ Client ID ทดสอบอย่างน้อย 15 นาที
+  พร้อมตรวจ telemetry และ broker log แล้วทดลองตัด/ต่อ Wi-Fi ว่า reconnect
+  และรับคำสั่งได้อีกครั้ง ตรวจว่า ESP-NOW โหนดลูกอยู่ช่องเดียวกับ Wi-Fi ของ Master
+- การหยุด simulator หรือปิดบอร์ดยังทำให้ broker แสดง connection closed/timeout ได้
+  จึงควรเทียบกับเวลาที่หยุดโปรแกรมด้วย
+
+---
+
 ## 📂 โครงสร้างโฟลเดอร์สำหรับ Arduino IDE
 
 ```text

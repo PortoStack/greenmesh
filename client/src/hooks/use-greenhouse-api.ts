@@ -241,6 +241,7 @@ export function useGreenhouseApi({
 
         const res = await sendCommand(cmd);
         setLastResponse(res);
+        await onRefresh?.();
         return res;
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to toggle water level";
@@ -250,7 +251,7 @@ export function useGreenhouseApi({
         setIsSubmitting(false);
       }
     },
-    [sendWebSocketCommand],
+    [sendWebSocketCommand, onRefresh],
   );
 
   return {

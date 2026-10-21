@@ -183,6 +183,9 @@ export function useGreenhouseStream(): GreenhouseStreamState {
         const node = data as Node;
         setSnapshot((prev) => ({
           ...prev,
+          ...(node.id === "utility"
+            ? { water_low: node.digital_value === 1, emergency: node.digital_value === 1 }
+            : {}),
           nodes: {
             ...prev.nodes,
             [node.id]: node,

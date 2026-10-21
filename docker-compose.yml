@@ -13,7 +13,9 @@ services:
       - greenhouse-net
 
   node-red:
-    image: nodered/node-red:latest
+    build:
+      context: ./docker/nodered
+      dockerfile: Dockerfile
     container_name: greenhouse-nodered
     restart: unless-stopped
     depends_on:

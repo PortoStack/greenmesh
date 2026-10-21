@@ -108,6 +108,26 @@ firmware/
 
 ## 🛠️ คำสั่ง Make (Makefile)
 
+### แก้ Node-RED ขึ้น `unknown: modbus-flex-write` / `modbus-flex-getter`
+
+Docker image ของโปรเจกต์ติดตั้ง `node-red-contrib-modbus` ตอน build โดยอ่านเวอร์ชันจาก
+`docker/nodered/data/package.json` หลังอัปเดตให้รันจากโฟลเดอร์โปรเจกต์:
+
+```bash
+docker compose up -d --build node-red
+docker compose logs --tail 60 node-red
+```
+
+รีเฟรชหน้า `http://localhost:1880` แล้วตรวจว่าไม่มี unknown nodes และ log แสดง
+`Started flows` ทดสอบ API ได้ที่ `http://localhost:1880/api/status`
+
+การโหลด nodes สำเร็จยังไม่ได้ยืนยันการสื่อสาร RS485: ต้องมี Master serial port
+`/dev/ttyUSB0` ภายใน container และ Slave ID 1–3 ที่ตั้งค่า 9600 baud, 8N1 ตรงกัน
+บน Windows พอร์ต `COM3` ไม่ใช่ `/dev/ttyUSB0` ภายใน Linux container โดยอัตโนมัติ
+ต้องเชื่อมอุปกรณ์ USB เข้า Linux/WSL ที่ Docker ใช้อยู่ หรือรัน Node-RED บน Windows
+แล้วเปลี่ยน serial port เป็น COM ที่ใช้งานจริง (และเปลี่ยน MQTT broker เป็น `localhost`
+ถ้า broker ยังรันใน Docker บนเครื่องเดียวกัน)
+
 สามารถรันคำสั่ง `make` ได้จากโฟลเดอร์ `greenmesh/`:
 
 ### Docker Services Management (MQTT Broker, Node-RED, Next.js Client)
