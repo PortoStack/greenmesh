@@ -24,13 +24,13 @@
 
 // --- ตัวแปรและสถานะประจำโหนด ---
 static uint8_t  fan_state = 0;            // 0 = พัดลมหยุด, 1 = พัดลมหมุน
+static uint8_t  fan_request = 0;          // 0 = ปกติ, 1 = ขอเปิดพัดลม (Toggle)
 static int      last_raw_button = HIGH;
 static int      debounced_button = HIGH;
 static unsigned long last_debounce_time = 0;
 
-static uint8_t  fan_request_flag = 0;
-static bool     manual_pulse_active = false;
-static unsigned long manual_pulse_start = 0;
+static bool     feedback_blink_active = false;
+static unsigned long feedback_blink_end = 0;
 
 static bool     remote_override_active = false;
 static unsigned long remote_override_start = 0;
@@ -50,13 +50,21 @@ float readTemperature() {
 
 // ข้อ 8.6: ใช้งาน digitalRead() อ่านค่า Digital Input (ปุ่มขอเปิดพัดลม)
 uint8_t readFanRequest() {
-    return (debounced_button == LOW || manual_pulse_active || fan_request_flag) ? 1 : 0;
+    return fan_request;
 }
 
 // ข้อ 8.7: ใช้งาน digitalWrite() ควบคุม Digital Output (LED พัดลม)
 void setFanState(uint8_t state) {
     fan_state = state ? 1 : 0;
-    digitalWrite(PIN_OUTPUT_DEFAULT, fan_state ? HIGH : LOW); // GPIO 2
+    if (!feedback_blink_active) {
+        digitalWrite(PIN_OUTPUT_DEFAULT, fan_state ? HIGH : LOW); // GPIO 2
+    }
+}
+
+void triggerFeedbackBlink(unsigned long now) {
+    feedback_blink_active = true;
+    feedback_blink_end = now + 150;
+    digitalWrite(PIN_OUTPUT_DEFAULT, HIGH);
 }
 
 // ============================================================================
@@ -99,7 +107,12 @@ void sendStateAck(uint32_t cmd_id, uint8_t current_state) {
     Serial.printf("[%s] 📤 Sent State ACK for Cmd #%u: Fan=%d\n", NODE_ID, cmd_id, current_state);
 }
 
+#if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)) || (defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5))
+void onDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
+    const uint8_t *mac = recv_info ? recv_info->src_addr : nullptr;
+#else
 void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+#endif
     if (len < (int)sizeof(EspNowPayload)) return;
 
     EspNowPayload payload;
@@ -198,7 +211,7 @@ void loop() {
     unsigned long now = millis();
     float temp = readTemperature(); // ใช้งาน analogRead()
 
-    // 1. ตรวจสอบและ Debounce ปุ่มกดขอเปิดพัดลมเฉพาะจุด (ใช้งาน digitalRead())
+    // 1. ตรวจสอบและ Debounce ปุ่มกดขอเปิดพัดลม (ใช้งาน digitalRead())
     int reading = digitalRead(PIN_DIGITAL_DEFAULT);
     if (reading != last_raw_button) {
         last_debounce_time = now;
@@ -208,22 +221,21 @@ void loop() {
     if ((now - last_debounce_time) >= BUTTON_DEBOUNCE_MS) {
         if (reading != debounced_button) {
             debounced_button = reading;
-            if (debounced_button == LOW) { // มีการกดปุ่มขอเปิดพัดลม
-                manual_pulse_active = true;
-                manual_pulse_start = now;
-                fan_request_flag = 1;
-                setFanState(1); // ใช้งาน digitalWrite() เปิดพัดลมทันที
-                Serial.printf("[%s] 🔘 กดปุ่มขอเปิดพัดลมเฉพาะจุด! เปิดทำงานชั่วคราว %d วินาที\n",
-                              NODE_ID, MANUAL_FAN_PULSE_MS / 1000);
+            if (debounced_button == LOW) { // กดปุ่มลง -> สลับสถานะ Toggle
+                fan_request = fan_request ? 0 : 1;
+                triggerFeedbackBlink(now);
+                Serial.printf("[%s] 🔘 Toggle Fan Request -> %s (%d)\n",
+                              NODE_ID, fan_request ? "ขอเปิดพัดลม (Requested)" : "สถานะปกติ (Normal)", fan_request);
             }
         }
     }
 
-    // จัดการหน่วงเวลาดับพัดลมเมื่อครบ 15 วินาทีจากการกดปุ่มขอเปิดพัดลม
-    if (manual_pulse_active && (now - manual_pulse_start >= MANUAL_FAN_PULSE_MS)) {
-        manual_pulse_active = false;
-        fan_request_flag = 0;
-        Serial.printf("[%s] ⏱️ หมดเวลา Pulse พัดลมเฉพาะจุด (15s) -> คืนสู่การควบคุมอัตโนมัติ\n", NODE_ID);
+    // จัดการไฟกระพริบยืนยันการกดปุ่ม (Visual Feedback 150ms)
+    if (feedback_blink_active) {
+        if (now >= feedback_blink_end) {
+            feedback_blink_active = false;
+            digitalWrite(PIN_OUTPUT_DEFAULT, fan_state ? HIGH : LOW);
+        }
     }
 
     // เคลียร์ Manual Override จากเกตเวย์เมื่อครบ 30 วินาที
@@ -233,18 +245,16 @@ void loop() {
     }
 
     // 2. ลอจิกควบคุมพัดลมระบายอากาศอัตโนมัติตามอุณหภูมิ (Section 8)
-    if (!remote_override_active && !manual_pulse_active) {
-        if (temp > THRESHOLD_TEMP_HIGH) {
+    if (!remote_override_active) {
+        if (fan_request || temp > THRESHOLD_TEMP_HIGH) {
             if (fan_state == 0) {
                 setFanState(1); // ใช้งาน digitalWrite()
-                Serial.printf("[%s] 🌡️ อุณหภูมิสูง (%.1f°C > %.1f°C) -> เปิดพัดลม\n",
-                              NODE_ID, temp, THRESHOLD_TEMP_HIGH);
+                Serial.printf("[%s] 🌡️ อุณหภูมิสูงหรือมีคำขอเปิดพัดลม -> เปิดพัดลม\n", NODE_ID);
             }
-        } else if (temp < THRESHOLD_TEMP_LOW) {
+        } else if (!fan_request && temp < THRESHOLD_TEMP_LOW) {
             if (fan_state == 1) {
                 setFanState(0); // ใช้งาน digitalWrite()
-                Serial.printf("[%s] ❄️ อุณหภูมิเย็น (%.1f°C < %.1f°C) -> ปิดพัดลม\n",
-                              NODE_ID, temp, THRESHOLD_TEMP_LOW);
+                Serial.printf("[%s] ❄️ อุณหภูมิเย็นลงสู่เกณฑ์ปกติ -> ปิดพัดลม\n", NODE_ID);
             }
         }
     }

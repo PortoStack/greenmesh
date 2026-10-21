@@ -107,7 +107,12 @@ void sendStateAck(uint32_t cmd_id, uint8_t current_state) {
     Serial.printf("[%s] 📤 Sent State ACK for Cmd #%u: Valve=%d\n", NODE_ID, cmd_id, current_state);
 }
 
+#if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)) || (defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5))
+void onDataRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
+    const uint8_t *mac = recv_info ? recv_info->src_addr : nullptr;
+#else
 void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+#endif
     if (len < (int)sizeof(EspNowPayload)) return;
 
     EspNowPayload payload;

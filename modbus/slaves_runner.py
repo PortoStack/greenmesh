@@ -61,21 +61,25 @@ class ModbusSlaveDevice:
         # Data Model (0-indexed offset)
         # Coils: 0 = Off, 1 = On
         self.coils = {0: 0}
-        # Holding Registers: 0 = Mode (0:Manual, 1:Auto), 1 = Target
-        self.holding_registers = {0: 1, 1: 0}
         # Input Registers: 0 = Running Status (0/1), 1 = Dynamic Value
         self.input_registers = {0: 0, 1: 0}
 
-        # Station-specific default active values
+        # Station-specific default active values & targets (Compliant with Section 5 & 8)
         if slave_id == 1:   # Pump
             self.active_val = 15     # 15 L/min
             self.unit = "L/min"
+            self.target_desc = "Target Flow (L/min)"
+            self.holding_registers = {0: 1, 1: 15}  # Mode: Auto (1), Target: 15 L/min
         elif slave_id == 2: # Fan
             self.active_val = 1200   # 1200 RPM
             self.unit = "RPM"
+            self.target_desc = "Target Temp Threshold (°C)"
+            self.holding_registers = {0: 1, 1: 30}  # Mode: Auto (1), Target: 30 °C
         else:               # Light
             self.active_val = 80     # 80 Watts
             self.unit = "W"
+            self.target_desc = "Target Light Threshold (%)"
+            self.holding_registers = {0: 1, 1: 40}  # Mode: Auto (1), Target: 40 %
 
     def handle_request(self, req: bytes) -> bytes:
         if len(req) < 4 or not verify_crc16(req):
@@ -158,6 +162,42 @@ class ModbusSlaveDevice:
             print(f"[{CYAN}Slave {self.slave_id}{RESET} - {YELLOW}{self.name}{RESET}] "
                   f"📝 Holding Register {addr} Set -> {val}")
             return req
+
+        # -------------------------------------------------------------
+        # FC 15: Write Multiple Coils (0x0F)
+        # -------------------------------------------------------------
+        elif fc == 0x0F:
+            addr = int.from_bytes(req[2:4], "big")
+            count = int.from_bytes(req[4:6], "big")
+            byte_count = req[6]
+            data = req[7:7+byte_count]
+            for i in range(count):
+                bit = (data[i // 8] >> (i % 8)) & 1
+                self.coils[addr + i] = bit
+                if addr + i == 0:
+                    self.input_registers[0] = bit
+                    self.input_registers[1] = self.active_val if bit == 1 else 0
+            status_str = f"{GREEN}ON 🟢{RESET}" if self.coils.get(0, 0) == 1 else f"{RED}OFF 🔴{RESET}"
+            print(f"[{CYAN}Slave {self.slave_id}{RESET} - {YELLOW}{self.name}{RESET}] "
+                  f"⚡ Coils Written (FC15) -> Coil 0={status_str}")
+            resp_body = bytes([self.slave_id, 0x0F]) + req[2:6]
+            return resp_body + calc_crc16(resp_body)
+
+        # -------------------------------------------------------------
+        # FC 16: Write Multiple Holding Registers (0x10)
+        # -------------------------------------------------------------
+        elif fc == 0x10:
+            addr = int.from_bytes(req[2:4], "big")
+            count = int.from_bytes(req[4:6], "big")
+            byte_count = req[6]
+            data = req[7:7+byte_count]
+            for i in range(count):
+                val = int.from_bytes(data[i*2:i*2+2], "big")
+                self.holding_registers[addr + i] = val
+            print(f"[{CYAN}Slave {self.slave_id}{RESET} - {YELLOW}{self.name}{RESET}] "
+                  f"📝 Registers Written (FC16) starting @ {addr}, count={count}")
+            resp_body = bytes([self.slave_id, 0x10]) + req[2:6]
+            return resp_body + calc_crc16(resp_body)
 
         # Unsupported FC -> Exception 0x01 (Illegal Function)
         exc_body = bytes([self.slave_id, fc | 0x80, 0x01])

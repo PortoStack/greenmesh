@@ -195,15 +195,25 @@ void reconnectMqtt() {
 // ฟังก์ชันสื่อสาร ESP-NOW Gateway
 // ============================================================================
 
+#if (defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)) || (defined(ESP_IDF_VERSION_MAJOR) && (ESP_IDF_VERSION_MAJOR >= 5))
+void onEspNowRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) {
+    const uint8_t *mac = recv_info ? recv_info->src_addr : nullptr;
+#else
 void onEspNowRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+#endif
     if (len < (int)sizeof(EspNowPayload)) return;
 
     EspNowPayload payload;
     memcpy(&payload, incomingData, sizeof(EspNowPayload));
 
+    Serial.printf("[Gateway ESP-NOW] 📥 Recv from '%s': Analog=%.1f, Digital=%d, Out=%d (Seq #%u)\n",
+                  payload.node_id, payload.analog, payload.digital, payload.output, payload.seq);
+
     if (payload.msg_type == MSG_TYPE_TELEMETRY) {
         if (telemetry_queue != nullptr) {
-            xQueueSend(telemetry_queue, &payload, 0);
+            if (xQueueSend(telemetry_queue, &payload, 0) != pdTRUE) {
+                Serial.printf("[Gateway] ⚠️ Telemetry Queue Full! Dropped packet from %s\n", payload.node_id);
+            }
         }
     } else if (payload.msg_type == MSG_TYPE_STATE) {
         if (state_queue != nullptr) {
@@ -248,11 +258,6 @@ void setup() {
     pinMode(PIN_DIGITAL_DEFAULT, INPUT_PULLUP);
     pinMode(PIN_OUTPUT_DEFAULT, OUTPUT);
     digitalWrite(PIN_OUTPUT_DEFAULT, LOW);
-
-    // ตรวจสอบค่าเริ่มต้นสวิตช์น้ำต่ำ
-    int initial_read = digitalRead(PIN_DIGITAL_DEFAULT);
-    last_raw_button = initial_read;
-    debounced_button = initial_read;
 
     // 1. เชื่อมต่อ Wi-Fi
     WiFi.mode(WIFI_STA);

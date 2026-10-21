@@ -366,8 +366,9 @@ export function useGreenhouseStream(): GreenhouseStreamState {
           if (!isMountedRef.current) return;
           try {
             const msg = JSON.parse(e.data);
-            if (msg.event && msg.data) {
-              handleEventDataRef.current(msg.event, msg.data);
+            const eventType = msg.event || msg.type;
+            if (eventType && eventType !== "pong" && msg.data) {
+              handleEventDataRef.current(eventType, msg.data);
             } else if (msg.type === "pong") {
               setLastHeartbeat(new Date());
             }
