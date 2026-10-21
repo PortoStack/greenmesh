@@ -38,6 +38,7 @@ interface UtilityStationCardProps {
   isSubmitting: boolean;
   onToggleActuator: (actuatorId: string, currentCoil: number) => Promise<unknown>;
   onSaveThresholds: (thresholds: Partial<SystemConfig>) => Promise<unknown>;
+  onToggleWaterLow?: () => Promise<unknown>;
 }
 
 export function UtilityStationCard({
@@ -49,6 +50,7 @@ export function UtilityStationCard({
   isSubmitting,
   onToggleActuator,
   onSaveThresholds,
+  onToggleWaterLow,
 }: UtilityStationCardProps) {
   const [lightMin, setLightMin] = useState<number>(config?.light_min ?? 30);
   const [lightMax, setLightMax] = useState<number>(config?.light_max ?? 40);
@@ -118,15 +120,32 @@ export function UtilityStationCard({
               <RiDropLine className="size-4 text-sky-400" />
               ระดับน้ำในถังพัก (Water Level):
             </span>
-            {isWaterLow ? (
-              <Badge variant="destructive" className="gap-1 text-xs">
-                <RiAlertFill className="size-3.5" /> ระดับน้ำต่ำ (ตัดน้ำ)
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-xs">
-                <RiShieldCheckLine className="size-3.5" /> ระดับน้ำปกติ
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {isWaterLow ? (
+                <Badge variant="destructive" className="gap-1 text-xs">
+                  <RiAlertFill className="size-3.5" /> ระดับน้ำต่ำ (ตัดน้ำ)
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 bg-emerald-500/10 gap-1 text-xs">
+                  <RiShieldCheckLine className="size-3.5" /> ระดับน้ำปกติ
+                </Badge>
+              )}
+              {onToggleWaterLow && (
+                <Button
+                  size="xs"
+                  variant={isWaterLow ? "default" : "outline"}
+                  disabled={isSubmitting}
+                  onClick={() => onToggleWaterLow()}
+                  className={`h-6 text-[11px] px-2 gap-1 ${
+                    isWaterLow
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                      : "border-amber-500/40 text-amber-400 hover:bg-amber-500/10"
+                  }`}
+                >
+                  {isWaterLow ? "💧 ปลดล็อกน้ำปกติ" : "⚠️ จำลองน้ำต่ำ"}
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Modbus Slave 1: Water Pump Control */}

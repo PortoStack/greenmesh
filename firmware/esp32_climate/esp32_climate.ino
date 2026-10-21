@@ -16,6 +16,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include "config.h"
 #include "protocol.h"
@@ -131,12 +133,14 @@ void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
             }
             
             sendStateAck(payload.command_id, fan_state);
+            sendTelemetry(readTemperature(), readFanRequest(), fan_state);
         }
     }
 }
 
 void initEspNow() {
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_15dBm);
 
 #if WOKWI_SIMULATION
     esp_wifi_set_mac(WIFI_IF_STA, const_cast<uint8_t*>(MAC_CLIMATE));
@@ -192,6 +196,7 @@ void initEspNow() {
 // ============================================================================
 
 void setup() {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     Serial.begin(SERIAL_BAUD_RATE);
     delay(500);
     Serial.println("\n=======================================================");
@@ -200,6 +205,11 @@ void setup() {
 
     pinMode(PIN_ANALOG_DEFAULT, INPUT);
     pinMode(PIN_DIGITAL_DEFAULT, INPUT_PULLUP);
+    delay(10);
+    int initial_btn = digitalRead(PIN_DIGITAL_DEFAULT);
+    last_raw_button = initial_btn;
+    debounced_button = initial_btn;
+    fan_request = 0;
     pinMode(PIN_OUTPUT_DEFAULT, OUTPUT);
     digitalWrite(PIN_OUTPUT_DEFAULT, LOW);
 
@@ -225,6 +235,7 @@ void loop() {
                 triggerFeedbackBlink(now);
                 Serial.printf("[%s] 🔘 Toggle Fan Request -> %s (%d)\n",
                               NODE_ID, fan_request ? "ขอเปิดพัดลม (Requested)" : "สถานะปกติ (Normal)", fan_request);
+                sendTelemetry(temp, readFanRequest(), fan_state);
             }
         }
     }

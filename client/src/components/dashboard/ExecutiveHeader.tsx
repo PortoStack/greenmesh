@@ -33,6 +33,7 @@ interface ExecutiveHeaderProps {
   onEmergencyStop: () => Promise<void>;
   onRefresh: () => Promise<void>;
   onOpenDrawerTab?: (tab: "controls" | "charts" | "events") => void;
+  onToggleWaterLow?: (currentLow: boolean) => Promise<unknown>;
 }
 
 export function ExecutiveHeader({
@@ -45,6 +46,7 @@ export function ExecutiveHeader({
   onEmergencyStop,
   onRefresh,
   onOpenDrawerTab,
+  onToggleWaterLow,
 }: ExecutiveHeaderProps) {
   const isAutoMode = snapshot.config?.auto_mode ?? true;
   const isWaterLow = snapshot.water_low;
@@ -77,13 +79,20 @@ export function ExecutiveHeader({
                 IoT SCADA
               </Badge>
               {isWaterLow && (
-                <Badge
+                <Button
                   variant="destructive"
-                  className="animate-pulse gap-1 text-[11px]"
+                  size="xs"
+                  onClick={() =>
+                    onToggleWaterLow
+                      ? onToggleWaterLow(true)
+                      : onOpenDrawerTab?.("controls")
+                  }
+                  className="animate-pulse gap-1 text-[11px] h-6 px-2 shadow-sm font-semibold hover:bg-destructive/80 cursor-pointer"
+                  title="คลิกเพื่อปลดล็อกสถานะน้ำต่ำ (Reset Water Low)"
                 >
                   <RiAlertFill className="size-3" />
-                  WATER LOW EMERGENCY
-                </Badge>
+                  WATER LOW (คลิกปลดล็อก)
+                </Button>
               )}
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">

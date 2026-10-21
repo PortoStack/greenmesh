@@ -37,6 +37,7 @@ export default function HomePage() {
     setSystemMode,
     saveThresholds,
     triggerEmergencyStop,
+    toggleWaterLow,
   } = useGreenhouseApi({
     onOptimisticNode: updateOptimisticNode,
     onOptimisticActuator: updateOptimisticActuator,
@@ -81,6 +82,7 @@ export default function HomePage() {
         onEmergencyStop={triggerEmergencyStop}
         onRefresh={refresh}
         onOpenDrawerTab={handleOpenDrawer}
+        onToggleWaterLow={toggleWaterLow}
       />
 
       {/* 2. Optional Floating Network Topology Bar Dropdown */}
@@ -135,6 +137,7 @@ export default function HomePage() {
         onToggleNodeOutput={toggleNodeOutput}
         onToggleActuatorCoil={toggleActuatorCoil}
         onSaveThresholds={saveThresholds}
+        onToggleWaterLow={toggleWaterLow}
       />
     </div>
   );

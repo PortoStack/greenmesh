@@ -54,6 +54,7 @@ interface DashboardDrawerProps {
     currentCoil: number,
   ) => Promise<unknown>;
   onSaveThresholds: (thresholds: Partial<SystemConfig>) => Promise<unknown>;
+  onToggleWaterLow?: (currentLow: boolean) => Promise<unknown>;
 }
 
 export function DashboardDrawer({
@@ -68,6 +69,7 @@ export function DashboardDrawer({
   onToggleNodeOutput,
   onToggleActuatorCoil,
   onSaveThresholds,
+  onToggleWaterLow,
 }: DashboardDrawerProps) {
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
 
@@ -264,6 +266,11 @@ export function DashboardDrawer({
                     isSubmitting={isSubmitting}
                     onToggleActuator={onToggleActuatorCoil}
                     onSaveThresholds={onSaveThresholds}
+                    onToggleWaterLow={
+                      onToggleWaterLow
+                        ? () => onToggleWaterLow(snapshot.water_low)
+                        : undefined
+                    }
                   />
                 </div>
               </div>

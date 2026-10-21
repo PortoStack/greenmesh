@@ -16,6 +16,8 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include "config.h"
 #include "protocol.h"
@@ -128,14 +130,16 @@ void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
             remote_override_active = true;
             remote_override_start = millis();
             
-            // ส่ง ACK กลับเกตเวย์
+            // ส่ง ACK และ Telemetry ทันทีกลับเกตเวย์
             sendStateAck(payload.command_id, valve_state);
+            sendTelemetry(readMoisture(), has_pot, valve_state);
         }
     }
 }
 
 void initEspNow() {
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_15dBm);
 
 #if WOKWI_SIMULATION
     esp_wifi_set_mac(WIFI_IF_STA, const_cast<uint8_t*>(MAC_BED_A));
@@ -193,6 +197,7 @@ void initEspNow() {
 // ============================================================================
 
 void setup() {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
     Serial.begin(SERIAL_BAUD_RATE);
     delay(500);
     Serial.println("\n=======================================================");
@@ -202,6 +207,11 @@ void setup() {
     // กำหนดโหมดของขา I/O
     pinMode(PIN_ANALOG_DEFAULT, INPUT);
     pinMode(PIN_DIGITAL_DEFAULT, INPUT_PULLUP);
+    delay(10);
+    int initial_btn = digitalRead(PIN_DIGITAL_DEFAULT);
+    last_raw_button = initial_btn;
+    debounced_button = initial_btn;
+    has_pot = 1; // ค่าเริ่มต้นมีกระถางผักเสมอ
     pinMode(PIN_OUTPUT_DEFAULT, OUTPUT);
     digitalWrite(PIN_OUTPUT_DEFAULT, LOW);
 
@@ -228,6 +238,7 @@ void loop() {
                 triggerFeedbackBlink(now);
                 Serial.printf("[%s] 🔘 Toggle Pot Status -> %s (%d)\n",
                               NODE_ID, has_pot ? "มีกระถาง (Placed)" : "ไม่มีกระถาง (Empty)", has_pot);
+                sendTelemetry(moisture, has_pot, valve_state);
             }
         }
     }

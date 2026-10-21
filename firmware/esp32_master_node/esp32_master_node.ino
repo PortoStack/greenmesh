@@ -19,6 +19,8 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <PubSubClient.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
@@ -160,15 +162,28 @@ void onMqttMessage(char* topic, byte* payload, unsigned int length) {
     uint8_t out_val = 0;
     char *cmd_ptr = strstr(msg, "\"command_id\":");
     if (cmd_ptr) sscanf(cmd_ptr, "\"command_id\":%u", &cmd_id);
+    int temp_out = 0;
     char *out_ptr = strstr(msg, "\"output\":");
-    if (out_ptr) sscanf(out_ptr, "\"output\":%hhu", &out_val);
+    if (out_ptr) sscanf(out_ptr, "\"output\":%d", &temp_out);
+    out_val = (uint8_t)temp_out;
 
-    if (strcmp(target_node, NODE_ID) == 0) {
-        setGrowLight(out_val);
-        remote_override_active = true;
-        remote_override_start = millis();
-        publishState(NODE_ID, grow_light_state, true);
-        Serial.printf("[%s] Local Grow Light Command applied -> %d\n", NODE_ID, grow_light_state);
+    char *tgt_ptr = strstr(msg, "\"target\":");
+    char sub_tgt[32] = {0};
+    if (tgt_ptr) sscanf(tgt_ptr, "\"target\":\"%31[^\"]\"", sub_tgt);
+
+    if (strcmp(target_node, NODE_ID) == 0 || strcmp(target_node, "water_low") == 0 || strcmp(sub_tgt, "water_low") == 0) {
+        if (strcmp(sub_tgt, "water_low") == 0 || strcmp(target_node, "water_low") == 0) {
+            water_low = out_val ? 1 : 0;
+            Serial.printf("[%s] 💧 Remote Water Low command applied -> %d\n", NODE_ID, water_low);
+        } else {
+            setGrowLight(out_val);
+            remote_override_active = true;
+            remote_override_start = millis();
+            publishState(NODE_ID, grow_light_state, true);
+            Serial.printf("[%s] Local Grow Light Command applied -> %d\n", NODE_ID, grow_light_state);
+        }
+        local_seq++;
+        publishTelemetry(NODE_ID, readLight(), water_low, grow_light_state, local_seq);
     } else {
         sendEspNowCommand(target_node, cmd_id, out_val);
     }
@@ -245,6 +260,7 @@ void initEspNowGateway() {
 // ============================================================================
 
 void setup() {
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // ปิด Brownout Detector ป้องกันไฟตกตอนเปิด Wi-Fi
     Serial.begin(SERIAL_BAUD_RATE);
     delay(500);
     Serial.println("\n=======================================================");
@@ -256,11 +272,17 @@ void setup() {
 
     pinMode(PIN_ANALOG_DEFAULT, INPUT);
     pinMode(PIN_DIGITAL_DEFAULT, INPUT_PULLUP);
+    delay(10);
+    int initial_btn = digitalRead(PIN_DIGITAL_DEFAULT);
+    last_raw_button = initial_btn;
+    debounced_button = initial_btn;
+    water_low = 0; // เริ่มต้นที่ระดับน้ำปกติเสมอ
     pinMode(PIN_OUTPUT_DEFAULT, OUTPUT);
     digitalWrite(PIN_OUTPUT_DEFAULT, LOW);
 
     // 1. เชื่อมต่อ Wi-Fi
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_15dBm); // ลดกำลังส่งเล็กน้อยป้องกันไฟกระชาก
 #if WOKWI_SIMULATION
     esp_wifi_set_mac(WIFI_IF_STA, const_cast<uint8_t*>(MAC_MASTER));
 #endif
@@ -341,6 +363,8 @@ void loop() {
                 triggerFeedbackBlink(now);
                 Serial.printf("[%s] 🚨 Toggle Water Status -> %s (%d)\n",
                               NODE_ID, water_low ? "น้ำต่ำฉุกเฉิน (Alert)" : "ระดับน้ำปกติ (Normal)", water_low);
+                local_seq++;
+                publishTelemetry(NODE_ID, light, water_low, grow_light_state, local_seq);
             }
         }
     }

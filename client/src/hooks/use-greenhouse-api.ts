@@ -214,6 +214,45 @@ export function useGreenhouseApi({
     }
   }, [onOptimisticActuator, onOptimisticNode, onRefresh, sendWebSocketCommand]);
 
+  const toggleWaterLow = useCallback(
+    async (currentLow: boolean) => {
+      const nextLow = !currentLow;
+      setIsSubmitting(true);
+      setApiError(null);
+
+      try {
+        const cmd: Command = {
+          target_type: "node",
+          target_id: "water_low",
+          output: nextLow ? 1 : 0,
+          source: "web_dashboard",
+        };
+
+        if (sendWebSocketCommand && sendWebSocketCommand(cmd)) {
+          const fastResp: CommandResponse = {
+            success: true,
+            message: `Toggled water_low to ${nextLow}`,
+            command_id: Date.now(),
+            timestamp: new Date().toISOString(),
+          };
+          setLastResponse(fastResp);
+          return fastResp;
+        }
+
+        const res = await sendCommand(cmd);
+        setLastResponse(res);
+        return res;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to toggle water level";
+        setApiError(msg);
+        throw err;
+      } finally {
+        setIsSubmitting(false);
+      }
+    },
+    [sendWebSocketCommand],
+  );
+
   return {
     isSubmitting,
     lastResponse,
@@ -223,5 +262,6 @@ export function useGreenhouseApi({
     setSystemMode,
     saveThresholds,
     triggerEmergencyStop,
+    toggleWaterLow,
   };
 }
