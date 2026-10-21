@@ -16,6 +16,12 @@ void MqttBridge::init(MqttCommandCallback on_cmd) {
     mqtt_client.setServer(MQTT_HOST, MQTT_PORT);
     mqtt_client.setCallback(MqttBridge::onMessageStatic);
     mqtt_client.setBufferSize(512);
+    mqtt_client.setKeepAlive(30);
+    mqtt_client.setSocketTimeout(15); // เพิ่ม timeout เป็น 15 วินาที เพื่อลดปัญหาเน็ตสะดุดแล้วตัดการเชื่อมต่อ
+
+    // กำหนด Client ID คงที่ตลอดรอบการบูตนี้ (สุ่มรหัสเซสชันครั้งเดียวตอนบูต)
+    client_id = "ESP32-Gateway-" + String((uint32_t)ESP.getEfuseMac(), HEX) + "-" + String(random(0x1000, 0xFFFF), HEX);
+    Serial.printf("[MQTT] Initialized with Client ID: %s\n", client_id.c_str());
 }
 
 void MqttBridge::connectWifi() {
@@ -61,7 +67,10 @@ void MqttBridge::loop() {
 }
 
 bool MqttBridge::publishTelemetry(const char* node_id, float analog, uint8_t digital, uint8_t output, uint32_t seq) {
-    if (!mqtt_client.connected()) return false;
+    if (!mqtt_client.connected()) {
+        Serial.printf("[MQTT] ⚠️ Cannot publish: Not connected to MQTT Broker (%s:%d)\n", MQTT_HOST, MQTT_PORT);
+        return false;
+    }
 
     char topic[64];
     snprintf(topic, sizeof(topic), "greenhouse/%s/telemetry", node_id);
@@ -76,11 +85,20 @@ bool MqttBridge::publishTelemetry(const char* node_id, float analog, uint8_t dig
     char buffer[256];
     size_t len = serializeJson(doc, buffer);
 
-    return mqtt_client.publish(topic, buffer, len);
+    bool ok = mqtt_client.publish(topic, buffer, len);
+    if (ok) {
+        Serial.printf("[MQTT] 🚀 Published to %s: %s\n", topic, buffer);
+    } else {
+        Serial.printf("[MQTT] ❌ Failed to publish to %s\n", topic);
+    }
+    return ok;
 }
 
 bool MqttBridge::publishState(const char* node_id, uint8_t output, bool online) {
-    if (!mqtt_client.connected()) return false;
+    if (!mqtt_client.connected()) {
+        Serial.printf("[MQTT] ⚠️ Cannot publish: Not connected to MQTT Broker (%s:%d)\n", MQTT_HOST, MQTT_PORT);
+        return false;
+    }
 
     char topic[64];
     snprintf(topic, sizeof(topic), "greenhouse/%s/state", node_id);
@@ -93,7 +111,13 @@ bool MqttBridge::publishState(const char* node_id, uint8_t output, bool online) 
     char buffer[256];
     size_t len = serializeJson(doc, buffer);
 
-    return mqtt_client.publish(topic, buffer, len);
+    bool ok = mqtt_client.publish(topic, buffer, len);
+    if (ok) {
+        Serial.printf("[MQTT] 🚀 Published State to %s: %s\n", topic, buffer);
+    } else {
+        Serial.printf("[MQTT] ❌ Failed to publish State to %s\n", topic);
+    }
+    return ok;
 }
 
 void MqttBridge::reconnectMqtt() {
@@ -101,10 +125,14 @@ void MqttBridge::reconnectMqtt() {
     if (millis() - last_mqtt_retry < 5000) return;
     last_mqtt_retry = millis();
 
-    Serial.printf("[MQTT] Connecting to broker %s:%d...", MQTT_HOST, MQTT_PORT);
-    String clientId = "ESP32-Gateway-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+    Serial.printf("[MQTT] Connecting to broker %s:%d (ID: %s)...", MQTT_HOST, MQTT_PORT, client_id.c_str());
 
-    if (mqtt_client.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+    // ปิด TCP Socket เดิมอย่างปลอดภัยก่อนหากค้างอยู่
+    if (wifi_client.connected()) {
+        wifi_client.stop();
+    }
+
+    if (mqtt_client.connect(client_id.c_str(), MQTT_USER, MQTT_PASS)) {
         Serial.println(" Connected!");
         mqtt_client.subscribe("greenhouse/+/command");
         Serial.println("[MQTT] Subscribed to greenhouse/+/command");
@@ -118,6 +146,11 @@ void MqttBridge::onMessageStatic(char* topic, byte* payload, unsigned int length
 }
 
 void MqttBridge::handleMessage(char* topic, byte* payload, unsigned int length) {
+    if (length >= 512) {
+        Serial.println("[MQTT Inbound] ⚠️ Payload too large, ignored");
+        return;
+    }
+
     char msg[length + 1];
     memcpy(msg, payload, length);
     msg[length] = '\0';
@@ -137,7 +170,8 @@ void MqttBridge::handleMessage(char* topic, byte* payload, unsigned int length) 
         return;
     }
 
-    uint32_t command_id = doc["command_id"] | 0;
+    uint64_t raw_cmd = doc["command_id"].as<uint64_t>();
+    uint32_t command_id = (raw_cmd > 0) ? (uint32_t)(raw_cmd % 1000000) : (uint32_t)(doc["command_id"] | 0);
     uint8_t output = doc["output"] | 0;
 
     if (command_cb) {

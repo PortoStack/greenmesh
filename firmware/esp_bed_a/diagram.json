@@ -40,17 +40,17 @@
     }
   ],
   "connections": [
-    [ "esp:TX", "$serialMonitor:RX", "", [] ],
-    [ "esp:RX", "$serialMonitor:TX", "", [] ],
-    [ "esp:3V3", "pot_moisture:VCC", "red", [ "v0" ] ],
-    [ "esp:GND.1", "pot_moisture:GND", "black", [ "v0" ] ],
-    [ "esp:34", "pot_moisture:SIG", "green", [ "v0" ] ],
-    [ "esp:GND.1", "sw_pot:1", "black", [ "v0" ] ],
-    [ "esp:25", "sw_pot:2", "orange", [ "v0" ] ],
-    [ "esp:3V3", "sw_pot:3", "red", [ "v0" ] ],
-    [ "esp:2", "r1:1", "blue", [ "v0" ] ],
-    [ "r1:2", "led_valve:A", "blue", [ "v0" ] ],
-    [ "esp:GND.2", "led_valve:C", "black", [ "v0" ] ]
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+    ["esp:3V3", "pot_moisture:VCC", "red", ["v0"]],
+    ["esp:GND.1", "pot_moisture:GND", "black", ["v0"]],
+    ["esp:34", "pot_moisture:SIG", "green", ["v0"]],
+    ["esp:GND.1", "sw_pot:1", "black", ["v0"]],
+    ["esp:25", "sw_pot:2", "orange", ["v0"]],
+    ["esp:3V3", "sw_pot:3", "red", ["v0"]],
+    ["esp:2", "r1:1", "blue", ["v0"]],
+    ["r1:2", "led_valve:A", "blue", ["v0"]],
+    ["esp:GND.2", "led_valve:C", "black", ["v0"]]
   ],
   "dependencies": {}
 }

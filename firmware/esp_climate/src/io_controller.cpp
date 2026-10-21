@@ -21,6 +21,14 @@ void ClimateController::init() {
     pinMode(PIN_BTN_FAN_REQ, INPUT_PULLUP);
     pinMode(PIN_LED_FAN, OUTPUT);
     digitalWrite(PIN_LED_FAN, LOW);
+
+    // อ่านสถานะเริ่มต้นของปุ่มกดเพื่อป้องกันการเกิด Edge หลอกตอนบูต
+    int initial_read = digitalRead(PIN_BTN_FAN_REQ);
+    last_raw_button = initial_read;
+    debounced_button = initial_read;
+    if (initial_read == LOW) {
+        Serial.println("[climate] ⚠️ คำเตือน: ตรวจพบ GPIO 25 อยู่ที่สถานะ LOW ตั้งแต่เริ่มบูต (หากใช้ปุ่ม 4 ขา ให้ตรวจสอบว่าสายไม่ช็อตกัน)");
+    }
 }
 
 float ClimateController::readTemperature() {
@@ -76,7 +84,7 @@ void ClimateController::update() {
                 manual_pulse_start = now;
                 remote_override_active = false;
                 setFanState(1);
-                Serial.printf("[climate] 🔘 ปุ่มขอเปิดพัดลมทำงาน! สั่งเปิดพัดลมเฉพาะจุด (Pulse %d วินาที)\n",
+                Serial.printf("[climate] 🔘 กดปุ่ม GPIO 25 (ขอเปิดพัดลม)! สั่งเปิดพัดลมเฉพาะจุดทันที (Pulse %d วินาที)\n",
                               MANUAL_FAN_PULSE_MS / 1000);
             }
         }

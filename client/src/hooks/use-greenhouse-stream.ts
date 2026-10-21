@@ -240,19 +240,35 @@ export function useGreenhouseStream(): GreenhouseStreamState {
     setLastHeartbeat(new Date());
   }, []);
 
+  const handleEventDataRef = useRef(handleEventData);
+  useEffect(() => {
+    handleEventDataRef.current = handleEventData;
+  });
+
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+
+  const loadInitialHistoryRef = useRef(loadInitialHistory);
+  useEffect(() => {
+    loadInitialHistoryRef.current = loadInitialHistory;
+  });
+
   // Unified Connection Manager: WebSocket First -> SSE Fallback
   useEffect(() => {
     isMountedRef.current = true;
 
     // Load initial snapshot and historical charts
-    refresh();
-    loadInitialHistory();
+    refreshRef.current();
+    loadInitialHistoryRef.current();
 
     function connectSSE() {
       if (!isMountedRef.current) return;
       // Close any previous event source
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
 
       const streamUrl = getApiUrl("/api/stream");
@@ -292,7 +308,7 @@ export function useGreenhouseStream(): GreenhouseStreamState {
           es.addEventListener(evt, (e: MessageEvent) => {
             try {
               const parsed = JSON.parse(e.data);
-              handleEventData(evt, parsed);
+              handleEventDataRef.current(evt, parsed);
             } catch {
               // ignore parse error
             }
@@ -312,6 +328,7 @@ export function useGreenhouseStream(): GreenhouseStreamState {
       if (!isMountedRef.current) return;
       if (wsRef.current) {
         wsRef.current.close();
+        wsRef.current = null;
       }
 
       const wsUrl = getWebSocketUrl("/api/ws");
@@ -350,7 +367,7 @@ export function useGreenhouseStream(): GreenhouseStreamState {
           try {
             const msg = JSON.parse(e.data);
             if (msg.event && msg.data) {
-              handleEventData(msg.event, msg.data);
+              handleEventDataRef.current(msg.event, msg.data);
             } else if (msg.type === "pong") {
               setLastHeartbeat(new Date());
             }
@@ -360,22 +377,23 @@ export function useGreenhouseStream(): GreenhouseStreamState {
         };
 
         ws.onerror = () => {
-          // If WebSocket encounters an error, immediately fall back to SSE
-          if (isMountedRef.current && transport !== "sse") {
-            connectSSE();
-          }
+          // Error will trigger onclose automatically, avoiding duplicate connectSSE calls
         };
 
         ws.onclose = () => {
           if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
           if (!isMountedRef.current) return;
 
-          // If was connected via WS and closed, fall back to SSE or retry
-          if (transport === "websocket") {
-            setIsConnected(false);
-            setTransport("offline");
-            connectSSE();
-          }
+          setIsConnected(false);
+          setTransport("offline");
+
+          // Clean fallback to SSE with 1s debounce to prevent flapping loops
+          if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = setTimeout(() => {
+            if (isMountedRef.current) {
+              connectSSE();
+            }
+          }, 1000);
         };
       } catch {
         // Fall back to SSE on exception
@@ -405,7 +423,7 @@ export function useGreenhouseStream(): GreenhouseStreamState {
         clearInterval(pingIntervalRef.current);
       }
     };
-  }, [refresh, loadInitialHistory, handleEventData]);
+  }, []);
 
   return {
     snapshot,

@@ -31,6 +31,7 @@ private:
     WiFiClient wifi_client;
     PubSubClient mqtt_client;
     MqttCommandCallback command_cb;
+    String client_id;
 };
 
 #endif // MQTT_BRIDGE_H

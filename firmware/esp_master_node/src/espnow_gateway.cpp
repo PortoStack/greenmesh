@@ -77,15 +77,25 @@ void EspNowGateway::onDataSentStatic(const uint8_t *mac, esp_now_send_status_t s
 
 void EspNowGateway::handleDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
     if (len != sizeof(EspNowPayload)) {
+        Serial.printf("[ESP-NOW Gateway] ⚠️ Received packet with invalid size %d (expected %d)\n",
+                      len, sizeof(EspNowPayload));
         return;
     }
 
     EspNowPayload payload;
     memcpy(&payload, data, sizeof(EspNowPayload));
 
-    if (payload.msg_type == MSG_TYPE_TELEMETRY && telemetry_cb) {
-        telemetry_cb(payload);
-    } else if (payload.msg_type == MSG_TYPE_STATE && state_cb) {
-        state_cb(payload);
+    if (payload.msg_type == MSG_TYPE_TELEMETRY) {
+        Serial.printf("[ESP-NOW Gateway] 📡 Received Telemetry from '%s' (Analog=%.1f, Digital=%d, Output=%d, seq=%u)\n",
+                      payload.node_id, payload.analog, payload.digital, payload.output, payload.seq);
+        if (telemetry_cb) {
+            telemetry_cb(payload);
+        }
+    } else if (payload.msg_type == MSG_TYPE_STATE) {
+        Serial.printf("[ESP-NOW Gateway] 📡 Received State ACK from '%s' (Output=%d, cmd_id=%u)\n",
+                      payload.node_id, payload.output, payload.command_id);
+        if (state_cb) {
+            state_cb(payload);
+        }
     }
 }

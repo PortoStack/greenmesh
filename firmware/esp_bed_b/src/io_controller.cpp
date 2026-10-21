@@ -8,9 +8,11 @@
 BedBController::BedBController() 
     : valve_state(0),
       has_pot(1), // เริ่มต้นมีกระถางเป็นค่ามาตรฐาน
-      last_raw_button(LOW),
-      debounced_button(LOW),
+      last_raw_button(HIGH),
+      debounced_button(HIGH),
       last_debounce_time(0),
+      feedback_blink_active(false),
+      feedback_blink_end(0),
       remote_override_active(false),
       remote_override_start(0) {}
 
@@ -19,6 +21,14 @@ void BedBController::init() {
     pinMode(PIN_BTN_POT, INPUT_PULLUP);
     pinMode(PIN_LED_VALVE, OUTPUT);
     digitalWrite(PIN_LED_VALVE, LOW);
+
+    // อ่านสถานะเริ่มต้นของปุ่มกดเพื่อป้องกันการเกิด Edge หลอกตอนบูต
+    int initial_read = digitalRead(PIN_BTN_POT);
+    last_raw_button = initial_read;
+    debounced_button = initial_read;
+    if (initial_read == LOW) {
+        Serial.println("[bed_b] ⚠️ คำเตือน: ตรวจพบ GPIO 25 อยู่ที่สถานะ LOW ตั้งแต่เริ่มบูต (หากใช้ปุ่ม 4 ขา ให้ตรวจสอบว่าสายไม่ช็อตกัน)");
+    }
 }
 
 float BedBController::readMoisture() {
@@ -31,9 +41,17 @@ uint8_t BedBController::readHasPot() {
     return has_pot;
 }
 
+void BedBController::triggerFeedbackBlink(unsigned long now) {
+    feedback_blink_active = true;
+    feedback_blink_end = now + 150;
+    digitalWrite(PIN_LED_VALVE, HIGH);
+}
+
 void BedBController::setValve(uint8_t state) {
     valve_state = state ? 1 : 0;
-    digitalWrite(PIN_LED_VALVE, valve_state ? HIGH : LOW);
+    if (!feedback_blink_active) {
+        digitalWrite(PIN_LED_VALVE, valve_state ? HIGH : LOW);
+    }
 }
 
 uint8_t BedBController::getValveState() const {
@@ -51,7 +69,7 @@ void BedBController::update() {
     unsigned long now = millis();
     float moisture = readMoisture();
 
-    // 1. อ่านและแก้สวิตช์กระดอน (Debounce) ของสวิตช์/ปุ่มตรวจพบกระถาง (LOW = วางกระถาง, HIGH = ยกออก)
+    // 1. อ่านและแก้สวิตช์กระดอน (Debounce) ของสวิตช์/ปุ่มตรวจพบกระถาง (INPUT_PULLUP: LOW = กด)
     int reading = digitalRead(PIN_BTN_POT);
     if (reading != last_raw_button) {
         last_debounce_time = now;
@@ -61,11 +79,26 @@ void BedBController::update() {
     if ((now - last_debounce_time) >= BUTTON_DEBOUNCE_MS) {
         if (reading != debounced_button) {
             debounced_button = reading;
-            uint8_t new_pot = (debounced_button == LOW) ? 1 : 0;
-            if (new_pot != has_pot) {
-                has_pot = new_pot;
-                Serial.printf("[bed_b] 🪴 ตรวจพบสถานะกระถางแปลง B: %s\n", has_pot ? "วางกระถางแล้ว (Placed)" : "ไม่มีกระถาง (Empty)");
+            // เมื่อตรวจพบการกดปุ่ม (Falling Edge: LOW)
+            if (debounced_button == LOW) {
+                has_pot = has_pot ? 0 : 1; // สลับสถานะกระถาง (Toggle Mode สะดวกต่อการทดสอบบนเบรดบอร์ด)
+                triggerFeedbackBlink(now);
+                Serial.printf("[bed_b] 🔘 กดปุ่ม GPIO 25! สลับสถานะกระถาง -> %s (%d)\n",
+                              has_pot ? "วางกระถางแล้ว (Placed)" : "ไม่มีกระถาง (Empty)", has_pot);
+
+                if (has_pot && moisture >= THRESHOLD_MOISTURE_B_MIN) {
+                    Serial.printf("[bed_b] ℹ️ ความชื้นปัจจุบัน %.1f%% (เกณฑ์เปิดวาล์ว < %.1f%%) -> วาล์วยังไม่เปิด (หมุน Potentiometer ลงเพื่อทดสอบเปิดวาล์ว)\n",
+                                  moisture, THRESHOLD_MOISTURE_B_MIN);
+                }
             }
+        }
+    }
+
+    // จัดการไฟกระพริบยืนยันการกดปุ่ม (Visual Feedback 150ms)
+    if (feedback_blink_active) {
+        if (now >= feedback_blink_end) {
+            feedback_blink_active = false;
+            digitalWrite(PIN_LED_VALVE, valve_state ? HIGH : LOW);
         }
     }
 

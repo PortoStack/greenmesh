@@ -79,13 +79,38 @@ bool EspNowClient::init(const char* id, const uint8_t* custom_mac, CommandCallba
     }
 #endif
 
-    // บังคับกำหนด Wi-Fi Channel ให้ตรงกับระบบ (Channel 6 บน Wokwi, Channel 1 บนบอร์ดจริง)
+    uint8_t active_channel = ESPNOW_WIFI_CHANNEL;
+
+#if !WOKWI_SIMULATION
+    // สำหรับฮาร์ดแวร์จริง: สแกนหาช่องสัญญาณของ Wi-Fi AP (WIFI_SSID) เพื่อจูนความถี่ให้ตรงกับ Gateway อัตโนมัติ
+    if (strlen(WIFI_SSID) > 0) {
+        Serial.printf("[%s] 🔍 Scanning Wi-Fi to locate AP '%s'...\n", node_id, WIFI_SSID);
+        int n = WiFi.scanNetworks(false, false, false, 150);
+        bool found = false;
+        for (int i = 0; i < n; i++) {
+            if (WiFi.SSID(i) == WIFI_SSID) {
+                active_channel = WiFi.channel(i);
+                found = true;
+                Serial.printf("[%s] ✅ Found AP '%s' on Channel %d (RSSI: %d dBm)\n",
+                              node_id, WIFI_SSID, active_channel, WiFi.RSSI(i));
+                break;
+            }
+        }
+        WiFi.scanDelete();
+        if (!found) {
+            Serial.printf("[%s] ⚠️ AP '%s' not found. Falling back to default Channel %d\n",
+                          node_id, WIFI_SSID, ESPNOW_WIFI_CHANNEL);
+        }
+    }
+#endif
+
+    // บังคับกำหนด Wi-Fi Channel
     esp_wifi_set_promiscuous(true);
-    esp_wifi_set_channel(ESPNOW_WIFI_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_channel(active_channel, WIFI_SECOND_CHAN_NONE);
     esp_wifi_set_promiscuous(false);
 
-    Serial.printf("[%s] Wi-Fi Channel: %d, MAC: %s\n", 
-                  node_id, ESPNOW_WIFI_CHANNEL, WiFi.macAddress().c_str());
+    Serial.printf("[%s] Wi-Fi Radio Channel: %d, MAC: %s\n", 
+                  node_id, active_channel, WiFi.macAddress().c_str());
 
     // 1. เริ่มต้น ESP-NOW
     if (esp_now_init() != ESP_OK) {
@@ -102,13 +127,13 @@ bool EspNowClient::init(const char* id, const uint8_t* custom_mac, CommandCallba
 
         memset(&peer_info, 0, sizeof(peer_info));
         memcpy(peer_info.peer_addr, target_mac, 6);
-        peer_info.channel = ESPNOW_WIFI_CHANNEL;
+        peer_info.channel = active_channel;
         peer_info.encrypt = false;
 
         if (esp_now_add_peer(&peer_info) != ESP_OK) {
             Serial.printf("[%s] Failed to add ESP-NOW peer!\n", node_id);
         } else {
-            Serial.printf("[%s] ESP-NOW Peer registered\n", node_id);
+            Serial.printf("[%s] ESP-NOW Peer registered on Channel %d\n", node_id, active_channel);
         }
     }
 

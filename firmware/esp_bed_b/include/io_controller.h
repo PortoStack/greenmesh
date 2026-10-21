@@ -25,6 +25,10 @@ private:
     int debounced_button;
     unsigned long last_debounce_time;
 
+    bool feedback_blink_active;
+    unsigned long feedback_blink_end;
+    void triggerFeedbackBlink(unsigned long now);
+
     bool remote_override_active;
     unsigned long remote_override_start;
 };

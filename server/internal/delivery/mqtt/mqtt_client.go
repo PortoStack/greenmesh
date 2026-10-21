@@ -41,15 +41,17 @@ func (c *Client) Connect() error {
 		AddBroker(brokerURI).
 		SetClientID(fmt.Sprintf("%s-%d", c.cfg.MqttClientID, time.Now().UnixNano()%10000)).
 		SetAutoReconnect(true).
+		SetConnectRetry(true).
+		SetOrderMatters(false).
 		SetCleanSession(true).
-		SetKeepAlive(30 * time.Second).
+		SetKeepAlive(60 * time.Second).
 		SetPingTimeout(10 * time.Second).
 		SetConnectionLostHandler(func(_ paho.Client, err error) {
 			log.Printf("[MQTT] Connection lost: %v. Reconnecting automatically...", err)
 		}).
 		SetOnConnectHandler(func(client paho.Client) {
 			log.Printf("[MQTT] Successfully connected to %s", brokerURI)
-			c.subscribeTopics(client)
+			go c.subscribeTopics(client)
 		})
 
 	if c.cfg.MqttUsername != "" {
@@ -94,11 +96,15 @@ func (c *Client) subscribeTopics(client paho.Client) {
 
 	for topic, handler := range topics {
 		t := client.Subscribe(topic, 1, handler)
-		if t.Wait() && t.Error() != nil {
-			log.Printf("[MQTT] Failed to subscribe to topic '%s': %v", topic, t.Error())
-		} else {
-			log.Printf("[MQTT] Subscribed to topic: %s", topic)
-		}
+		go func(top string, tok paho.Token) {
+			if tok.WaitTimeout(5*time.Second) && tok.Error() != nil {
+				log.Printf("[MQTT] Failed to subscribe to topic '%s': %v", top, tok.Error())
+			} else if tok.Error() == nil {
+				log.Printf("[MQTT] Subscribed to topic: %s", top)
+			} else {
+				log.Printf("[MQTT] Subscribe to topic '%s' timed out", top)
+			}
+		}(topic, t)
 	}
 }
 
@@ -148,9 +154,11 @@ func (c *Client) handleTelemetry(_ paho.Client, msg paho.Message) {
 	}
 
 	log.Printf("[MQTT] 📥 Telemetry received from '%s': Analog=%.1f, Digital=%d, Output=%d, Seq=%d", raw.NodeID, raw.Analog, raw.Digital, raw.Output, raw.Seq)
-	if err := c.useCase.ProcessTelemetry(t); err != nil {
-		log.Printf("[MQTT] Error processing telemetry for node '%s': %v", raw.NodeID, err)
-	}
+	go func(telem domain.Telemetry) {
+		if err := c.useCase.ProcessTelemetry(telem); err != nil {
+			log.Printf("[MQTT] Error processing telemetry for node '%s': %v", telem.NodeID, err)
+		}
+	}(t)
 }
 
 func (c *Client) handleNodeState(_ paho.Client, msg paho.Message) {
@@ -186,7 +194,9 @@ func (c *Client) handleNodeState(_ paho.Client, msg paho.Message) {
 	}
 
 	log.Printf("[MQTT] 📥 Node State received from '%s': Output=%d, Online=%v", raw.NodeID, raw.Output, online)
-	_ = c.useCase.UpdateNodeState(raw.NodeID, raw.Output, online)
+	go func(nID string, out int, onl bool) {
+		_ = c.useCase.UpdateNodeState(nID, out, onl)
+	}(raw.NodeID, raw.Output, online)
 }
 
 func (c *Client) handleActuatorState(_ paho.Client, msg paho.Message) {
@@ -233,7 +243,9 @@ func (c *Client) handleActuatorState(_ paho.Client, msg paho.Message) {
 	}
 
 	log.Printf("[MQTT] 📥 Actuator State received: type=%s (Slave %d), coil=%d, running=%d", raw.Type, raw.SlaveID, raw.Coil, raw.Running)
-	_ = c.useCase.UpdateActuatorState(act)
+	go func(a domain.Actuator) {
+		_ = c.useCase.UpdateActuatorState(a)
+	}(act)
 }
 
 func (c *Client) handleModbusState(_ paho.Client, msg paho.Message) {
@@ -258,7 +270,9 @@ func (c *Client) handleAlert(_ paho.Client, msg paho.Message) {
 		return
 	}
 
-	_ = c.useCase.RecordAlert(raw.Level, raw.Source, raw.Message)
+	go func(lvl, src, m string) {
+		_ = c.useCase.RecordAlert(lvl, src, m)
+	}(raw.Level, raw.Source, raw.Message)
 }
 
 // PublishNodeCommand publishes an output control command to greenhouse/<node_id>/command
@@ -281,8 +295,12 @@ func (c *Client) PublishNodeCommand(nodeID string, output int, commandID int64) 
 	}
 
 	token := c.client.Publish(topic, 1, false, bytes)
-	token.Wait()
-	return token.Error()
+	go func(top string, tok paho.Token) {
+		if tok.WaitTimeout(3*time.Second) && tok.Error() != nil {
+			log.Printf("[MQTT] Publish error on topic '%s': %v", top, tok.Error())
+		}
+	}(topic, token)
+	return nil
 }
 
 // PublishActuatorCommand publishes command to greenhouse/actuator/<type>/command
@@ -308,8 +326,12 @@ func (c *Client) PublishActuatorCommand(actuatorType string, coil int, mode *int
 	}
 
 	token := c.client.Publish(topic, 1, false, bytes)
-	token.Wait()
-	return token.Error()
+	go func(top string, tok paho.Token) {
+		if tok.WaitTimeout(3*time.Second) && tok.Error() != nil {
+			log.Printf("[MQTT] Publish error on topic '%s': %v", top, tok.Error())
+		}
+	}(topic, token)
+	return nil
 }
 
 // PublishConfig publishes system configuration to greenhouse/system/config
@@ -326,8 +348,12 @@ func (c *Client) PublishConfig(cfg domain.SystemConfig) error {
 	}
 
 	token := c.client.Publish(topic, 1, true, bytes)
-	token.Wait()
-	return token.Error()
+	go func(tok paho.Token) {
+		if tok.WaitTimeout(3*time.Second) && tok.Error() != nil {
+			log.Printf("[MQTT] Publish config error: %v", tok.Error())
+		}
+	}(token)
+	return nil
 }
 
 // PublishTelemetry publishes node telemetry to greenhouse/<node_id>/telemetry
@@ -353,6 +379,10 @@ func (c *Client) PublishTelemetry(t domain.Telemetry) error {
 	}
 
 	token := c.client.Publish(topic, 1, false, bytes)
-	token.Wait()
-	return token.Error()
+	go func(tok paho.Token) {
+		if tok.WaitTimeout(3*time.Second) && tok.Error() != nil {
+			log.Printf("[MQTT] Publish telemetry error: %v", tok.Error())
+		}
+	}(token)
+	return nil
 }
