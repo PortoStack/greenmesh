@@ -3,5 +3,7 @@
   "description": "GreenMesh Node-RED Gateway & Automation Flows",
   "version": "1.0.0",
   "private": true,
-  "dependencies": {}
+  "dependencies": {
+    "node-red-contrib-modbus": "^5.30.0"
+  }
 }

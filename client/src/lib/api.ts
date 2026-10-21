@@ -9,18 +9,14 @@ import {
 
 export function getBaseApiUrl(): string {
   if (typeof window !== "undefined") {
-    // If NEXT_PUBLIC_API_URL is configured, prefer it, otherwise use current origin or localhost:8080
+    // If NEXT_PUBLIC_API_URL is configured, prefer it, otherwise use current origin or localhost:1880
     if (process.env.NEXT_PUBLIC_API_URL) {
       return process.env.NEXT_PUBLIC_API_URL;
     }
-    // If port 3000 in browser, API is at 8080
-    if (window.location.port === "3000") {
-      return `${window.location.protocol}//${window.location.hostname}:8080`;
-    }
-    // Otherwise relative (e.g., through Nginx reverse proxy on port 80)
-    return "";
+    // Direct connection to Node-RED on port 1880
+    return `${window.location.protocol}//${window.location.hostname}:1880`;
   }
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:1880";
 }
 
 export function getApiUrl(endpoint: string): string {
@@ -36,13 +32,9 @@ export function getWebSocketUrl(endpoint = "/api/ws"): string {
       return `${process.env.NEXT_PUBLIC_WS_URL}${cleanEndpoint}`;
     }
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    if (window.location.port === "3000") {
-      return `${proto}//${window.location.hostname}:8080${cleanEndpoint}`;
-    }
-    const host = window.location.host;
-    return `${proto}//${host}${cleanEndpoint}`;
+    return `${proto}//${window.location.hostname}:1880${cleanEndpoint}`;
   }
-  return "ws://localhost:8080/api/ws";
+  return "ws://localhost:1880/api/ws";
 }
 
 export async function fetchSnapshot(): Promise<SystemSnapshot> {

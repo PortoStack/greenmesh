@@ -2,40 +2,36 @@
   "folders": [
     {
       "name": "Client - GreenMesh",
-      "path": "./client"
-    },
-    {
-      "name": "Server - GreenMesh",
-      "path": "./server"
+      "path": "./client",
     },
     {
       "name": "Docker - GreenMesh",
-      "path": "./docker"
+      "path": "./docker",
     },
     {
-      "name": "ESP Master - GreenMesh",
-      "path": "firmware/esp_master_node"
+      "name": "Modbus RS485 - GreenMesh",
+      "path": "./modbus",
     },
     {
-      "name": "ESP Bed A - GreenMesh",
-      "path": "firmware/esp_bed_a"
+      "name": "ESP32 Master - GreenMesh",
+      "path": "firmware/esp32_master_node",
     },
     {
-      "name": "ESP Bed B - GreenMesh",
-      "path": "firmware/esp_bed_b"
+      "name": "ESP32 Bed A - GreenMesh",
+      "path": "firmware/esp32_bed_a",
     },
     {
-      "name": "ESP Climate - GreenMesh",
-      "path": "firmware/esp_climate"
+      "name": "ESP32 Bed B - GreenMesh",
+      "path": "firmware/esp32_bed_b",
     },
     {
-      "name": "Firmware Common - GreenMesh",
-      "path": "firmware/common"
+      "name": "ESP32 Climate - GreenMesh",
+      "path": "firmware/esp32_climate",
     },
     {
       "name": "Root - GreenMesh",
-      "path": "."
-    }
+      "path": ".",
+    },
   ],
   "settings": {
     "editor.formatOnSave": true,
@@ -43,19 +39,19 @@
 
     // --- Next.js / Web Formatting (Prettier) ---
     "[javascript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[typescript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[typescriptreact]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[json]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[jsonc]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+      "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
 
     // --- Golang Formatting & Tools (Server) ---
@@ -63,23 +59,23 @@
       "editor.defaultFormatter": "golang.go",
       "editor.formatOnSave": true,
       "editor.codeActionsOnSave": {
-        "source.organizeImports": "always"
-      }
+        "source.organizeImports": "always",
+      },
     },
     "go.useLanguageServer": true,
     "gopls": {
       "ui.semanticTokens": true,
-      "formatting.gofumpt": true
+      "formatting.gofumpt": true,
     },
 
-    // --- C/C++ Formatting & IntelliSense (ESP32 Firmware) ---
+    // --- C/C++ Formatting & IntelliSense (ESP3232 Firmware) ---
     "[c]": {
       "editor.defaultFormatter": "ms-vscode.cpptools",
-      "editor.formatOnSave": true
+      "editor.formatOnSave": true,
     },
     "[cpp]": {
       "editor.defaultFormatter": "ms-vscode.cpptools",
-      "editor.formatOnSave": true
+      "editor.formatOnSave": true,
     },
     "C_Cpp.formatting": "Default",
     "C_Cpp.intelliSenseEngine": "default",
@@ -91,20 +87,20 @@
       "${workspaceFolder}/src",
       "${workspaceFolder}/../common",
       "${workspaceFolder}/../../firmware/common",
-      "/Users/porto/Workspace/Study/sensor-network/term_project/greenmesh/firmware/common"
+      "/Users/porto/Workspace/Study/sensor-network/term_project/greenmesh/firmware/common",
     ],
 
     // --- Markdown Formatting ---
     "[markdown]": {
-      "editor.defaultFormatter": "yzhang.markdown-all-in-one"
+      "editor.defaultFormatter": "yzhang.markdown-all-in-one",
     },
 
     // --- ESLint Integration for Next.js Subdirectory ---
     "eslint.workingDirectories": [
       {
         "directory": "client",
-        "changeProcessCWD": true
-      }
+        "changeProcessCWD": true,
+      },
     ],
 
     // --- Search & File Excludes ---
@@ -112,15 +108,15 @@
       "**/node_modules": true,
       "**/.next": true,
       "**/.pio": true,
-      "**/bin": true
-    }
+      "**/bin": true,
+    },
   },
   "extensions": {
     "recommendations": [
       // Golang
       "golang.go",
 
-      // C/C++ & Embedded / ESP32 Simulation
+      // C/C++ & Embedded / ESP3232 Simulation
       "ms-vscode.cpptools",
       "platformio.platformio-ide",
       "wokwi.wokwi-vscode",
@@ -133,7 +129,7 @@
       // Docker, TOML & Documentation
       "ms-azuretools.vscode-docker",
       "tamasfe.even-better-toml",
-      "yzhang.markdown-all-in-one"
-    ]
-  }
+      "yzhang.markdown-all-in-one",
+    ],
+  },
 }

@@ -1,21 +1,22 @@
 # GreenMesh - Smart Greenhouse System
 
-ระบบดูแลแปลงผักและโรงเรือนอัจฉริยะ (ESP32 + MQTT + Node-RED + Golang Fiber + Next.js)  
+ระบบดูแลแปลงผักและโรงเรือนอัจฉริยะ (ESP32 + MQTT + Node-RED + Next.js)  
 ออกแบบและพัฒนาตามข้อกำหนดใน [Smart_Greenhouse_Project_Proposal.md](../Smart_Greenhouse_Project_Proposal.md)
 
 ---
 
 ## 🏛️ สถาปัตยกรรมระบบ (Services Overview)
 
-- **MQTT Broker**: `eclipse-mosquitto:2` (พอร์ต `1883` สำหรับ IoT/Node-RED/Server, พอร์ต `9001` WebSocket สำหรับ Dashboard)
-- **Node-RED**: เกตเวย์ประมวลผลกฎอัตโนมัติและสะพานเชื่อมต่อ RS485 Modbus RTU 3 สถานี (พอร์ต `1880`)
-- **Server (Backend)**: Golang Fiber v2 ด้วยโครงสร้าง **Clean Architecture** (พอร์ต `8080`)
-  - จัดการสถานะโหนด ESP32 ทั้ง 4 ตัว และ Modbus Slaves ทั้ง 3 สถานี
-  - รัน Watchdog ตรวจจับสถานะ Online/Offline (Heartbeat)
-  - ประเมินกฎความปลอดภัยฉุกเฉิน (น้ำในถังต่ำ -> ตัดปั๊มและปิดวาล์วทันที แม้อยู่ในโหมด Manual)
-  - ให้บริการ WebSocket Full-Duplex Gateway และ Server-Sent Events (SSE)
+ระบบถูกออกแบบให้เป็น **Lean & Clean Architecture** ตรงตามโครงสร้างในเอกสารโจทย์ข้อกำหนดรายวิชา (ไดอะแกรมหน้า 5):
+
+- **MQTT Broker**: `eclipse-mosquitto:2` (พอร์ต `1883` สำหรับ IoT/Node-RED, พอร์ต `9001` WebSocket)
+- **Node-RED (Main Back end)**: เกตเวย์หลักตัวเดียวของระบบ (พอร์ต `1880`)
+  - **Rule Engine**: ประมวลผลกฎอัตโนมัติตาม Section 8 (ความชื้นต่ำเปิดวาล์วและสั่งปั๊ม, น้ำต่ำหยุดฉุกเฉิน)
+  - **Modbus RTU Master**: ควบคุมและอ่านสถานะอุปกรณ์ผ่านบัส RS485 3 สถานี (ปั๊มน้ำ, พัดลม, ไฟ)
+  - **API to Front end**: ให้บริการ REST API (`/api/status`, `/api/commands`, `/api/config`) และ WebSocket Stream (`/api/ws`)
+  - **Watchdog**: ตรวจสอบสถานะการเชื่อมต่อ Online/Offline ของ ESP32 อัตโนมัติ
 - **Client (Frontend)**: Next.js Dashboard แบบ Standalone พร้อม Tailwind CSS (พอร์ต `3000`)
-- **Nginx (Reverse Proxy)**: รวมทางเข้า Client, Server API และ Node-RED (พอร์ต `80`)
+- **Modbus Slave Simulator (`modbus/`)**: สคริปต์ Python จำลอง Slave RS485 ทั้ง 3 สถานีรองรับพอร์ต USB จริง
 
 ---
 
@@ -25,17 +26,19 @@
 
 ```text
 [ESP32 #1: esp_bed_a]       (MAC: 02:00:00:00:00:01) ──┐
-[ESP32 #2: esp_bed_b]       (MAC: 02:00:00:00:00:02) ──┼─── (ESP-NOW Broadcast Ch.6) ──▶ [ESP32 #4: esp_master_node] (MAC: 02:00:00:00:00:04)
-[ESP32 #3: esp_climate]     (MAC: 02:00:00:00:00:03) ──┘                                           │
-                                                                                                    ├── (Wi-Fi: Wokwi-GUEST / Greenhouse_AP)
-                                                                                                    ▼
-                                                                                            [MQTT Broker (Port 1883)]
-                                                                                                    │
-                                                                                        +-----------+-----------+
-                                                                                        │                       │
-                                                                                    [Node-RED]           [Golang Server]
-                                                                                        │                       │
-                                                                                [Web Dashboard]         [Next.js Client]
+[ESP32 #2: esp_bed_b]       (MAC: 02:00:00:00:00:02) ──┼─── (ESP-NOW Broadcast Ch.1 / Ch.6) ──▶ [ESP32 #4: esp_master_node]
+[ESP32 #3: esp_climate]     (MAC: 02:00:00:00:00:03) ──┘                                                      │
+                                                                                                              ├── (Wi-Fi AP)
+                                                                                                              ▼
+                                                                                                      [MQTT Broker (1883)]
+                                                                                                              │
+                                                                                                              ▼
+                                                                                                [Node-RED: Main Back end (1880)]
+                                                                                                 ├── Modbus RTU Master (RS485 Bus)
+                                                                                                 └── API to Front end (HTTP/WS)
+                                                                                                              │
+                                                                                                              ▼
+                                                                                                    [Next.js Dashboard (3000)]
 ```
 
 ### โครงสร้างโฟลเดอร์ Firmware

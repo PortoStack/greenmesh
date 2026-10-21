@@ -1,0 +1,260 @@
+/**
+ * ============================================================================
+ * โครงงาน: GreenMesh - Smart Greenhouse System (ESP32 #2: Bed B Node)
+ * วิชา: 305432 Sensor Network Term Project
+ * หน้าที่: ตรวจวัดความชื้นดินแปลง B, ตรวจจับการวางกระถาง, และควบคุมวาล์วรดน้ำ B
+ * 
+ * ข้อกำหนดตามโจทย์:
+ *  - ใช้งาน analogRead() อ่านค่าความชื้นดินจำลองจาก Potentiometer ที่ GPIO 34 (ADC1)
+ *  - ใช้งาน digitalRead() อ่านค่าสวิตช์ตรวจจับกระถางที่ GPIO 25 (Digital In)
+ *  - ใช้งาน digitalWrite() ควบคุมหลอด LED แสดงสถานะโซลินอยด์วาล์ว B ที่ GPIO 2 (Output)
+ *  - ใช้งานการสื่อสารโปรโตคอล ESP-NOW ส่ง Telemetry และรับคำสั่งควบคุม
+ * ============================================================================
+ */
+
+#include <Arduino.h>
+#include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
+
+#include "config.h"
+#include "protocol.h"
+
+#define NODE_ID "bed_b"
+
+// --- ตัวแปรและสถานะประจำโหนด ---
+static uint8_t  valve_state = 0;
+static uint8_t  has_pot = 1;
+static int      last_raw_button = HIGH;
+static int      debounced_button = HIGH;
+static unsigned long last_debounce_time = 0;
+
+static bool     feedback_blink_active = false;
+static unsigned long feedback_blink_end = 0;
+
+static bool     remote_override_active = false;
+static unsigned long remote_override_start = 0;
+
+static uint32_t packet_seq = 0;
+static uint8_t  target_mac[6];
+
+// ============================================================================
+// ฟังก์ชันอ่านค่าและควบคุม I/O ฮาร์ดแวร์ตามโจทย์
+// ============================================================================
+
+// ข้อ 8.5: ใช้งาน analogRead() อ่านค่า Analog Input
+float readMoisture() {
+    int raw_analog = analogRead(PIN_ANALOG_DEFAULT); // GPIO 34 (ADC1 0-4095)
+    return (raw_analog / 4095.0f) * 100.0f;          // แปลงเป็นเปอร์เซ็นต์ความชื้นดิน 0.0 - 100.0%
+}
+
+// ข้อ 8.6: ใช้งาน digitalRead() อ่านค่า Digital Input
+uint8_t readHasPot() {
+    return has_pot;
+}
+
+// ข้อ 8.7: ใช้งาน digitalWrite() ควบคุม Digital Output
+void setValve(uint8_t state) {
+    valve_state = state ? 1 : 0;
+    if (!feedback_blink_active) {
+        digitalWrite(PIN_OUTPUT_DEFAULT, valve_state ? HIGH : LOW); // GPIO 2
+    }
+}
+
+void triggerFeedbackBlink(unsigned long now) {
+    feedback_blink_active = true;
+    feedback_blink_end = now + 150;
+    digitalWrite(PIN_OUTPUT_DEFAULT, HIGH);
+}
+
+// ============================================================================
+// ฟังก์ชันสื่อสาร ESP-NOW
+// ============================================================================
+
+void sendTelemetry(float analog_val, uint8_t digital_val, uint8_t out_state) {
+    packet_seq++;
+    EspNowPayload payload;
+    memset(&payload, 0, sizeof(payload));
+    strncpy(payload.node_id, NODE_ID, sizeof(payload.node_id) - 1);
+    payload.msg_type = MSG_TYPE_TELEMETRY;
+    payload.analog = analog_val;
+    payload.digital = digital_val;
+    payload.output = out_state;
+    payload.seq = packet_seq;
+    payload.command_id = 0;
+
+    esp_err_t result = esp_now_send(target_mac, (uint8_t*)&payload, sizeof(payload));
+    if (result == ESP_OK) {
+        Serial.printf("[%s] 📡 Telemetry #%u Sent: Moisture=%.1f%%, Pot=%d, Valve=%d\n",
+                      NODE_ID, packet_seq, analog_val, digital_val, out_state);
+    } else {
+        Serial.printf("[%s] ❌ Telemetry send failed! Error code: %d\n", NODE_ID, result);
+    }
+}
+
+void sendStateAck(uint32_t cmd_id, uint8_t current_state) {
+    EspNowPayload payload;
+    memset(&payload, 0, sizeof(payload));
+    strncpy(payload.node_id, NODE_ID, sizeof(payload.node_id) - 1);
+    payload.msg_type = MSG_TYPE_STATE;
+    payload.analog = readMoisture();
+    payload.digital = readHasPot();
+    payload.output = current_state;
+    payload.seq = ++packet_seq;
+    payload.command_id = cmd_id;
+
+    esp_now_send(target_mac, (uint8_t*)&payload, sizeof(payload));
+    Serial.printf("[%s] 📤 Sent State ACK for Cmd #%u: Valve=%d\n", NODE_ID, cmd_id, current_state);
+}
+
+void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+    if (len < (int)sizeof(EspNowPayload)) return;
+
+    EspNowPayload payload;
+    memcpy(&payload, incomingData, sizeof(EspNowPayload));
+
+    if (payload.msg_type == MSG_TYPE_COMMAND) {
+        if (strcmp(payload.node_id, NODE_ID) == 0 || strcmp(payload.node_id, "all") == 0) {
+            Serial.printf("[%s] 📥 Inbound Command: Cmd #%u, Output=%d\n",
+                          NODE_ID, payload.command_id, payload.output);
+            
+            setValve(payload.output);
+            remote_override_active = true;
+            remote_override_start = millis();
+            
+            sendStateAck(payload.command_id, valve_state);
+        }
+    }
+}
+
+void initEspNow() {
+    WiFi.mode(WIFI_STA);
+
+#if WOKWI_SIMULATION
+    esp_wifi_set_mac(WIFI_IF_STA, const_cast<uint8_t*>(MAC_BED_B));
+#endif
+
+    uint8_t channel = ESPNOW_WIFI_CHANNEL;
+#if !WOKWI_SIMULATION
+    if (strlen(WIFI_SSID) > 0) {
+        Serial.printf("[%s] 🔍 Scanning Wi-Fi to locate AP '%s'...\n", NODE_ID, WIFI_SSID);
+        int n = WiFi.scanNetworks(false, false, false, 150);
+        for (int i = 0; i < n; i++) {
+            if (WiFi.SSID(i) == WIFI_SSID) {
+                channel = WiFi.channel(i);
+                Serial.printf("[%s] ✅ Found AP '%s' on Channel %d\n", NODE_ID, WIFI_SSID, channel);
+                break;
+            }
+        }
+        WiFi.scanDelete();
+    }
+#endif
+
+    esp_wifi_set_promiscuous(true);
+    esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_promiscuous(false);
+
+    if (esp_now_init() != ESP_OK) {
+        Serial.printf("[%s] ❌ ESP-NOW init failed!\n", NODE_ID);
+        return;
+    }
+    Serial.printf("[%s] ✅ ESP-NOW Initialized on Channel %d\n", NODE_ID, channel);
+
+    esp_now_register_recv_cb(onDataRecv);
+
+    esp_now_peer_info_t peerInfo;
+    memset(&peerInfo, 0, sizeof(peerInfo));
+    peerInfo.channel = channel;
+    peerInfo.encrypt = false;
+
+#if USE_BROADCAST_ESPNOW
+    memcpy(target_mac, BROADCAST_MAC_ADDRESS, 6);
+#else
+    memcpy(target_mac, MASTER_MAC_ADDRESS, 6);
+#endif
+    memcpy(peerInfo.peer_addr, target_mac, 6);
+
+    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
+        Serial.printf("[%s] ⚠️ Failed to add ESP-NOW peer\n", NODE_ID);
+    }
+}
+
+// ============================================================================
+// Arduino IDE Standard Setup & Loop
+// ============================================================================
+
+void setup() {
+    Serial.begin(SERIAL_BAUD_RATE);
+    delay(500);
+    Serial.println("\n=======================================================");
+    Serial.println("  [GreenMesh] ESP32 #2: Bed B Node Starting (Arduino IDE)");
+    Serial.println("=======================================================");
+
+    pinMode(PIN_ANALOG_DEFAULT, INPUT);
+    pinMode(PIN_DIGITAL_DEFAULT, INPUT_PULLUP);
+    pinMode(PIN_OUTPUT_DEFAULT, OUTPUT);
+    digitalWrite(PIN_OUTPUT_DEFAULT, LOW);
+
+    initEspNow();
+}
+
+void loop() {
+    unsigned long now = millis();
+    float moisture = readMoisture(); // ใช้งาน analogRead()
+
+    // 1. ตรวจสอบและ Debounce สวิตช์สลับสถานะกระถาง (ใช้งาน digitalRead())
+    int reading = digitalRead(PIN_DIGITAL_DEFAULT);
+    if (reading != last_raw_button) {
+        last_debounce_time = now;
+        last_raw_button = reading;
+    }
+
+    if ((now - last_debounce_time) >= BUTTON_DEBOUNCE_MS) {
+        if (reading != debounced_button) {
+            debounced_button = reading;
+            if (debounced_button == LOW) {
+                has_pot = has_pot ? 0 : 1;
+                triggerFeedbackBlink(now);
+                Serial.printf("[%s] 🔘 Toggle Pot Status -> %s (%d)\n",
+                              NODE_ID, has_pot ? "มีกระถาง (Placed)" : "ไม่มีกระถาง (Empty)", has_pot);
+            }
+        }
+    }
+
+    if (feedback_blink_active) {
+        if (now >= feedback_blink_end) {
+            feedback_blink_active = false;
+            digitalWrite(PIN_OUTPUT_DEFAULT, valve_state ? HIGH : LOW);
+        }
+    }
+
+    if (remote_override_active && (now - remote_override_start >= MANUAL_OVERRIDE_TIMEOUT)) {
+        remote_override_active = false;
+        Serial.printf("[%s] ℹ️ Manual Override expired. Returning to local auto mode\n", NODE_ID);
+    }
+
+    // 2. ลอจิกรดน้ำอัตโนมัติประจำโหนด B
+    if (!remote_override_active) {
+        if (has_pot && moisture < THRESHOLD_MOISTURE_B_MIN) {
+            if (valve_state == 0) {
+                setValve(1); // ใช้งาน digitalWrite()
+                Serial.printf("[%s] 💧 ความชื้นต่ำ (%.1f%% < %.1f%%) -> เปิดวาล์ว B\n",
+                              NODE_ID, moisture, THRESHOLD_MOISTURE_B_MIN);
+            }
+        } else if (!has_pot || moisture > THRESHOLD_MOISTURE_B_MAX) {
+            if (valve_state == 1) {
+                setValve(0); // ใช้งาน digitalWrite()
+                Serial.printf("[%s] 🛑 ความชื้นเพียงพอหรือไม่มีกระถาง -> ปิดวาล์ว B\n", NODE_ID);
+            }
+        }
+    }
+
+    // 3. ส่ง Telemetry ตามรอบเวลา
+    static unsigned long last_telemetry_time = 0;
+    if (now - last_telemetry_time >= TELEMETRY_INTERVAL_MS) {
+        last_telemetry_time = now;
+        sendTelemetry(moisture, has_pot, valve_state);
+    }
+
+    delay(20);
+}

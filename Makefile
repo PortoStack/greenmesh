@@ -1,4 +1,4 @@
-.PHONY: help build build-server build-client build-no-cache up up-build up-iot down restart logs logs-server logs-client logs-mqtt logs-nodered ps clean client-dev client-build client-install server-dev server-build server-test firmware-build firmware-build-master firmware-clean
+.PHONY: help build build-client build-no-cache up up-build up-iot down restart logs logs-client logs-mqtt logs-nodered ps clean client-dev client-build client-install modbus-slaves modbus-slaves-win firmware-build firmware-build-master firmware-clean
 
 # Default target
 .DEFAULT_GOAL := help
@@ -18,11 +18,8 @@ help: ## Show this help message
 
 # --- Docker Compose Commands ---
 
-build: ## Build all Docker images (Client, Server, etc.)
+build: ## Build all Docker images (Client, etc.)
 	docker compose build
-
-build-server: ## Build only the Golang Fiber server image
-	docker compose build server
 
 build-client: ## Build only the Next.js client image
 	docker compose build client
@@ -30,7 +27,7 @@ build-client: ## Build only the Next.js client image
 build-no-cache: ## Build all Docker images without cache
 	docker compose build --no-cache
 
-up: ## Start all containers in detached mode
+up: ## Start all containers (MQTT, Node-RED, Next.js Client)
 	docker compose up -d
 
 up-build: ## Build images and start all containers in detached mode
@@ -42,17 +39,11 @@ down: ## Stop and remove all containers and networks
 restart: ## Restart all containers
 	docker compose restart
 
-restart-server: ## Restart only the Golang Fiber server
-	docker compose restart server
-
 restart-client: ## Restart only the Next.js client
 	docker compose restart client
 
 logs: ## View real-time logs for all containers
 	docker compose logs -f
-
-logs-server: ## View real-time logs for Golang Fiber server
-	docker compose logs -f server
 
 logs-client: ## View real-time logs for Next.js client
 	docker compose logs -f client
@@ -80,14 +71,18 @@ client-dev: ## Run Next.js client in local development mode
 client-build: ## Build Next.js client locally
 	cd client && npm run build
 
-server-dev: ## Run Golang Fiber server locally
-	cd server && go run ./cmd/api
+# --- Modbus Slave Simulator Commands ---
 
-server-build: ## Build Golang Fiber binary locally
-	cd server && CGO_ENABLED=0 go build -o bin/server ./cmd/api
+PORT1 ?= /dev/ttyUSB1
+PORT2 ?= /dev/ttyUSB2
+PORT3 ?= /dev/ttyUSB3
+BAUD  ?= 9600
 
-server-test: ## Run Golang server unit tests
-	cd server && go test -v ./...
+modbus-slaves: ## Run Modbus RTU 3-Slave Simulator (e.g. make modbus-slaves PORT1=COM4 PORT2=COM5 PORT3=COM6)
+	python3 modbus/slaves_runner.py --port1 $(PORT1) --port2 $(PORT2) --port3 $(PORT3) --baud $(BAUD)
+
+modbus-slaves-win: ## Run Modbus RTU 3-Slave Simulator for Windows COM ports (COM4, COM5, COM6)
+	python modbus/slaves_runner.py --port1 COM4 --port2 COM5 --port3 COM6 --baud $(BAUD)
 
 # --- IoT & Firmware Commands ---
 

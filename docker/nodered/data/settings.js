@@ -6,6 +6,10 @@ module.exports = {
     flowFile: 'flows.json',
     flowFilePretty: true,
     credentialSecret: false,
+    httpNodeCors: {
+        origin: "*",
+        methods: "GET,PUT,POST,DELETE,OPTIONS"
+    },
     functionGlobalContext: {
         os: require('os')
     },
