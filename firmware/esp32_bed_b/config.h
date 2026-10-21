@@ -14,7 +14,7 @@
 #define MQTT_USER ""
 #define MQTT_PASS ""
 #else
-#define ESPNOW_WIFI_CHANNEL 1
+#define ESPNOW_WIFI_CHANNEL 8
 #define WIFI_SSID "robot_club"
 #define WIFI_PASSWORD "robot123"
 #define MQTT_HOST "192.168.7.129"

@@ -23,7 +23,7 @@
 #define MQTT_PASS ""
 #else
 // การตั้งค่าสำหรับฮาร์ดแวร์จริงในห้องปฏิบัติการ (ปรับให้ตรงกับ Wi-Fi Router และ IP เครื่อง Server)
-#define ESPNOW_WIFI_CHANNEL 1
+#define ESPNOW_WIFI_CHANNEL 8
 #define WIFI_SSID "robot_club"
 #define WIFI_PASSWORD "robot123"
 #define MQTT_HOST "192.168.7.129"

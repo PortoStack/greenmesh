@@ -127,8 +127,7 @@ void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
             remote_override_active = true;
             remote_override_start = millis();
             if (payload.output == 0) {
-                manual_pulse_active = false;
-                fan_request_flag = 0;
+                fan_request = 0;
             }
             
             sendStateAck(payload.command_id, fan_state);
